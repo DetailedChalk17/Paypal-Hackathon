@@ -1,0 +1,146 @@
+// Add a datasource, generator, and models when selecting the database and app requirements.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  donor
+  organizer
+  reviewer
+}
+
+enum CampaignStatus {
+  draft
+  active
+  completed
+  cancelled
+}
+
+enum MilestoneStatus {
+  open
+  evidence_submitted
+  approved
+  rejected
+  paid
+}
+
+enum DonationStatus {
+  pending
+  completed
+  failed
+  refunded
+}
+
+enum ReviewerDecision {
+  pending
+  approved
+  rejected
+}
+
+enum PayoutStatus {
+  pending
+  processing
+  paid
+  failed
+}
+
+model User {
+  id        String     @id @default(uuid()) @db.Uuid
+  role      UserRole
+  name      String
+  email     String     @unique
+
+  campaigns  Campaign[] @relation("OrganizerCampaigns")
+  donations  Donation[]
+}
+
+model Organization {
+  id         String     @id @default(uuid()) @db.Uuid
+  name       String
+  cause      String
+  location   String
+  verified   Boolean    @default(false)
+  trustScore Int        @default(0)
+
+  campaigns Campaign[]
+}
+
+model Campaign {
+  id                  String         @id @default(uuid()) @db.Uuid
+  organizationId      String         @db.Uuid
+  organizerId         String?        @db.Uuid
+  title               String
+  goalAmountCents     Int
+  currency            String         @default("USD")
+  status              CampaignStatus @default(draft)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  organizer    User?        @relation("OrganizerCampaigns", fields: [organizerId], references: [id])
+  milestones   Milestone[]
+  donations    Donation[]
+}
+
+model Milestone {
+  id                String          @id @default(uuid()) @db.Uuid
+  campaignId        String          @db.Uuid
+  title             String
+  budgetAmountCents Int
+  status            MilestoneStatus @default(open)
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  evidence Evidence[]
+  payouts  Payout[]
+}
+
+model Donation {
+  id              String         @id @default(uuid()) @db.Uuid
+  campaignId      String         @db.Uuid
+  donorId         String         @db.Uuid
+  amountCents     Int
+  paypalOrderId   String?        @unique
+  paypalCaptureId String?        @unique
+  status          DonationStatus @default(pending)
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  donor    User     @relation(fields: [donorId], references: [id])
+}
+
+model Evidence {
+  id               String           @id @default(uuid()) @db.Uuid
+  milestoneId      String           @db.Uuid
+  file             String
+  extractedFields  Json
+  aiFindings       Json
+  reviewerDecision ReviewerDecision @default(pending)
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+}
+
+model Payout {
+  id            String       @id @default(uuid()) @db.Uuid
+  milestoneId   String       @db.Uuid
+  amountCents   Int
+  senderBatchId String?
+  paypalBatchId String?      @unique
+  status        PayoutStatus @default(pending)
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id])
+}
+
+model LedgerEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  type      String
+  entityId  String   @db.Uuid
+  payload   Json
+  prevHash  String?
+  hash      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entityId, createdAt])
+}
