@@ -56,6 +56,7 @@ export const EvidenceFlagTypeSchema = z.enum([
   "duplicate",
   "unreadable",
   "date_out_of_range",
+  "totals_mismatch", // line items + tax do not add up to the printed total
 ]);
 
 export const EvidenceCheckNameSchema = z.enum([
