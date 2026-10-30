@@ -1,0 +1,11 @@
+
+{
+  "name": "@your-project/paypal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:auth": "node --env-file=../../.env --import tsx src/test-auth.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}
