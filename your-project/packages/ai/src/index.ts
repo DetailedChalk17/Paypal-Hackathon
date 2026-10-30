@@ -2,8 +2,10 @@
 // money, approve anything or hold payment credentials. Results are
 // "AI-assisted checks" that a human reviewer acts on.
 
-export { callModel, MODEL_TIMEOUT_MS } from "./callModel";
-export type { CallModelArgs, ModelImage } from "./callModel";
+export { callModel, MODEL_TIMEOUT_MS, UNTRUSTED_INPUT_NOTICE } from "./callModel";
+export type { CallModelArgs, CallModelOptions, ModelImage } from "./callModel";
+export { DEFAULT_MODEL, DEFAULT_PROVIDER, providerFromEnv } from "./config";
+export type { ModelProvider, ProviderRequest } from "./providers/types";
 export { MAX_FILE_BYTES, checkReceiptFile, detectFileType } from "./files";
 export type { ReceiptFile, DetectedFileType } from "./files";
 export {
@@ -14,5 +16,5 @@ export {
   routeDonation,
 } from "./stubs";
 
-// Which implementation is behind the exports: "stub" until steps A3 to A6 land.
+// callModel is real; the task functions are stubs until steps A3 to A6 land.
 export const AI_IMPLEMENTATION = "stub" as const;

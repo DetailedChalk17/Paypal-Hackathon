@@ -41,8 +41,8 @@ describe("step 0 stubs", () => {
     expect(AI_IMPLEMENTATION).toBe("stub");
   });
 
-  it("callModel reports api_error until the adapter exists", async () => {
-    const r = await callModel({ schema: ReceiptExtractionSchema, system: "s", prompt: "p" });
+  it("callModel reports api_error when no provider is configured", async () => {
+    const r = await callModel({ schema: ReceiptExtractionSchema, system: "s", prompt: "p" }, { provider: null });
     expect(r).toEqual({ ok: false, reason: "api_error" });
   });
 
