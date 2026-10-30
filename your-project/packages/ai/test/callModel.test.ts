@@ -4,28 +4,10 @@ import { ReceiptExtractionSchema } from "@your-project/shared";
 import { UNTRUSTED_INPUT_NOTICE, callModel, toProviderSchema } from "../src/callModel";
 import { DEFAULT_MODEL, providerFromEnv } from "../src/config";
 import { GeminiProvider } from "../src/providers/gemini";
-import type { ModelProvider, ProviderRequest } from "../src/providers/types";
+import { fakeProvider } from "./helpers";
 
 const Schema = z.object({ vendor: z.string(), totalCents: z.number().int() });
 const args = { schema: Schema, system: "Read the receipt.", prompt: "Extract vendor and total." };
-
-// A fake provider that replays scripted answers; no network.
-function fakeProvider(...answers: Array<string | Error | "hang">) {
-  const requests: ProviderRequest[] = [];
-  const provider: ModelProvider = {
-    name: "fake",
-    model: "fake-1",
-    generate: vi.fn(async (req: ProviderRequest) => {
-      requests.push(req);
-      const next = answers.shift();
-      if (next === "hang") return new Promise<string>(() => {});
-      if (next instanceof Error) throw next;
-      if (next === undefined) throw new Error("no scripted answer");
-      return next;
-    }),
-  };
-  return { provider, requests };
-}
 
 describe("callModel", () => {
   it("returns validated data on a good answer", async () => {

@@ -1,7 +1,6 @@
 import {
   DonationRequestSchema,
   EvidenceFindingsSchema,
-  ReceiptExtractionSchema,
   RoutingResultSchema,
   TrustExplanationSchema,
   type AiResult,
@@ -9,36 +8,15 @@ import {
   type DonationRequest,
   type EvidenceFindings,
   type ExplainTrustScoreInput,
-  type ReceiptExtraction,
   type RouteDonationInput,
   type RoutingResult,
   type TrustExplanation,
 } from "@your-project/shared";
-import { checkReceiptFile, type ReceiptFile } from "./files";
 import { validated } from "./validated";
 
 // STUBS (step 0). Same signatures and schemas as the real functions, returning
 // realistic canned data so the API and frontend can integrate now. Each one is
-// replaced by its real implementation in steps A3 to A6.
-
-export async function extractReceipt(file: ReceiptFile): Promise<AiResult<ReceiptExtraction>> {
-  const check = checkReceiptFile(file);
-  if (!check.ok) return check;
-
-  return validated(ReceiptExtractionSchema, {
-    vendor: "Greenleaf Office Supply",
-    date: "2026-10-12",
-    currency: "USD",
-    lineItems: [
-      { description: "A4 paper, 500 sheets", quantity: 4, unitPriceCents: 649, totalCents: 2596 },
-      { description: "Whiteboard markers (12 pack)", quantity: 2, unitPriceCents: 1199, totalCents: 2398 },
-    ],
-    subtotalCents: 4994,
-    taxCents: 412,
-    totalCents: 5406,
-    confidence: 0.92,
-  });
-}
+// replaced by its real implementation in steps A4 to A6.
 
 export async function checkEvidence(input: CheckEvidenceInput): Promise<AiResult<EvidenceFindings>> {
   const line = input.milestone.budgetLines?.[0] ?? null;

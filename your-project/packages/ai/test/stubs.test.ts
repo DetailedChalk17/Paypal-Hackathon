@@ -10,18 +10,23 @@ import {
 } from "@your-project/shared";
 import {
   AI_IMPLEMENTATION,
-  MAX_FILE_BYTES,
   callModel,
   checkEvidence,
   explainTrustScore,
-  extractReceipt,
   parseDonationRequest,
   routeDonation,
 } from "../src";
 
-const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
-const JPG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]);
-const PDF = new TextEncoder().encode("%PDF-1.7\n...");
+const extraction = ReceiptExtractionSchema.parse({
+  vendor: "Greenleaf Office Supply",
+  date: "2026-10-12",
+  currency: "USD",
+  lineItems: [{ description: "A4 paper", quantity: 4, unitPriceCents: 649, totalCents: 2596 }],
+  subtotalCents: 2596,
+  taxCents: 214,
+  totalCents: 2810,
+  confidence: 0.9,
+});
 
 const campaign = {
   id: "7c0f6d0e-3f8a-4c49-9a5e-1d2b3c4d5e6f",
@@ -37,8 +42,9 @@ const milestone = {
 };
 
 describe("step 0 stubs", () => {
-  it("is marked as a stub", () => {
-    expect(AI_IMPLEMENTATION).toBe("stub");
+  it("reports which exports are still stubs", () => {
+    expect(AI_IMPLEMENTATION.extractReceipt).toBe("real");
+    expect(AI_IMPLEMENTATION.checkEvidence).toBe("stub");
   });
 
   it("callModel reports api_error when no provider is configured", async () => {
@@ -46,42 +52,14 @@ describe("step 0 stubs", () => {
     expect(r).toEqual({ ok: false, reason: "api_error" });
   });
 
-  it.each([["png", PNG], ["jpg", JPG], ["pdf", PDF]])("extractReceipt accepts %s", async (_n, data) => {
-    const r = await extractReceipt({ data });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(ReceiptExtractionSchema.parse(r.data)).toEqual(r.data);
-  });
-
-  it("extractReceipt rejects unsupported, empty and oversized files by content", async () => {
-    const gif = new TextEncoder().encode("GIF89a....");
-    const big = new Uint8Array(MAX_FILE_BYTES + 1);
-    big.set(PNG);
-    for (const data of [gif, new Uint8Array(), big]) {
-      expect(await extractReceipt({ data, filename: "receipt.png" })).toEqual({
-        ok: false,
-        reason: "unsupported_file",
-      });
-    }
-  });
-
-  it("canned extraction is internally consistent", async () => {
-    const r = await extractReceipt({ data: PNG });
-    if (!r.ok) throw new Error("expected ok");
-    const items = r.data.lineItems.reduce((s, i) => s + (i.totalCents ?? 0), 0);
-    expect(items).toBe(r.data.subtotalCents);
-    expect(items + (r.data.taxCents ?? 0)).toBe(r.data.totalCents);
-  });
-
   it("checkEvidence returns valid findings and matches a real budget line id", async () => {
-    const extraction = await extractReceipt({ data: PNG });
-    if (!extraction.ok) throw new Error("expected ok");
-    const r = await checkEvidence({ extraction: extraction.data, milestone, campaign, spentCents: 0, priorEvidence: [] });
+    const r = await checkEvidence({ extraction, milestone, campaign, spentCents: 0, priorEvidence: [] });
     if (!r.ok) throw new Error("expected ok");
     expect(EvidenceFindingsSchema.parse(r.data)).toEqual(r.data);
     expect(r.data.matchedBudgetLineId).toBe("bl-1");
 
     const noLines = await checkEvidence({
-      extraction: extraction.data,
+      extraction,
       milestone: { ...milestone, budgetLines: undefined },
       campaign,
       spentCents: 0,
