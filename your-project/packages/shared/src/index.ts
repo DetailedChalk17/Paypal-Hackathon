@@ -27,6 +27,9 @@ export const CampaignSchema = z.object({
   goalAmountCents: Money,
   currency: z.literal("USD"),
   status: z.enum(["draft", "active", "completed", "cancelled"]),
+  // Optional, used by AI evidence checks (UTC calendar dates, inclusive)
+  startDate: z.iso.date().optional(),
+  endDate: z.iso.date().optional(),
 });
 
 export const MilestoneSchema = z.object({
@@ -34,6 +37,16 @@ export const MilestoneSchema = z.object({
   campaignId: Id,
   title: z.string().min(1),
   budgetAmountCents: Money,
+  // Optional, used by AI evidence checks to match a receipt to a budget line
+  budgetLines: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        amountCents: Money,
+      })
+    )
+    .optional(),
   status: z.enum([
     "open",
     "evidence_submitted",
@@ -84,6 +97,8 @@ export const LedgerEventSchema = z.object({
   hash: z.string().min(1),
   createdAt: z.string().datetime(),
 });
+
+export * from "./ai";
 
 // Export types derived from the schemas
 export type User = z.infer<typeof UserSchema>;
