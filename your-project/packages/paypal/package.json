@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "test:auth": "node --env-file=../../.env --import tsx src/test-auth.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:order": "node --env-file=../../.env --import tsx src/test-create-order.ts",
+    "test:capture": "node --env-file=../../.env --import tsx src/test-capture-order.ts"
+
   }
 }
