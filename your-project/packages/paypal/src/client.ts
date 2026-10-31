@@ -1,4 +1,3 @@
-
 const PAYPAL_API_BASE_URL = "https://api-m.sandbox.paypal.com";
 
 type PayPalTokenResponse = {
@@ -7,6 +6,13 @@ type PayPalTokenResponse = {
   expires_in: number;
 };
 
+type PayPalRequestOptions = {
+  method: "GET" | "POST";
+  body?: unknown;
+  requestId?: string;
+};
+
+// Cache the access token so we don't authenticate for every API request.
 let cachedToken: {
   value: string;
   expiresAt: number;
@@ -22,6 +28,7 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
+// STEP 1: Get a PayPal access token.
 export async function getAccessToken(): Promise<string> {
   const clientId = getRequiredEnv("PAYPAL_CLIENT_ID");
   const clientSecret = getRequiredEnv("PAYPAL_CLIENT_SECRET");
@@ -31,6 +38,7 @@ export async function getAccessToken(): Promise<string> {
     throw new Error("This integration currently supports Sandbox only.");
   }
 
+  // Reuse the cached token if it hasn't nearly expired.
   if (
     cachedToken &&
     cachedToken.expiresAt > Date.now() + 60_000
@@ -94,4 +102,65 @@ export async function getAccessToken(): Promise<string> {
   };
 
   return cachedToken.value;
+}
+
+// STEP 2: Reusable helper for making authenticated PayPal API requests.
+export async function paypalRequest<T>(
+  path: string,
+  options: PayPalRequestOptions
+): Promise<T> {
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    throw new Error("Invalid PayPal API path.");
+  }
+
+  const accessToken = await getAccessToken();
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+  };
+
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  // Used to help prevent duplicate operations when retrying requests.
+  if (options.requestId) {
+    headers["PayPal-Request-Id"] = options.requestId;
+  }
+
+  const response = await fetch(
+    `${PAYPAL_API_BASE_URL}${path}`,
+    {
+      method: options.method,
+      headers,
+      body:
+        options.body !== undefined
+          ? JSON.stringify(options.body)
+          : undefined,
+      signal: AbortSignal.timeout(15_000),
+    }
+  );
+
+  const data: unknown = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" &&
+      data !== null &&
+      "message" in data &&
+      typeof data.message === "string"
+        ? data.message
+        : response.statusText;
+
+    throw new Error(
+      `PayPal API error (${response.status}): ${message}`
+    );
+  }
+
+  if (data === null) {
+    throw new Error("PayPal returned an empty or invalid response.");
+  }
+
+  return data as T;
 }
