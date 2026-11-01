@@ -1,9 +1,11 @@
+
 import { z } from "zod";
 
 // Common validation
 const Id = z.string().uuid();
 const Money = z.number().int().nonnegative();
 
+// 1. User
 export const UserSchema = z.object({
   id: Id,
   role: z.enum(["donor", "organizer", "reviewer"]),
@@ -11,24 +13,29 @@ export const UserSchema = z.object({
   email: z.string().email(),
 });
 
+// 2. Organization
 export const OrganizationSchema = z.object({
   id: Id,
   name: z.string().min(1),
   cause: z.string().min(1),
   location: z.string(),
+  payoutEmail: z.string().email().nullable(),
   verified: z.boolean(),
   trustScore: z.number().int().min(0).max(100),
 });
 
+// 3. Campaign
 export const CampaignSchema = z.object({
   id: Id,
   organizationId: Id,
+  organizerId: Id.nullable(),
   title: z.string().min(1),
   goalAmountCents: Money,
   currency: z.literal("USD"),
   status: z.enum(["draft", "active", "completed", "cancelled"]),
 });
 
+// 4. Milestone
 export const MilestoneSchema = z.object({
   id: Id,
   campaignId: Id,
@@ -43,6 +50,7 @@ export const MilestoneSchema = z.object({
   ]),
 });
 
+// 5. Donation
 export const DonationSchema = z.object({
   id: Id,
   campaignId: Id,
@@ -53,6 +61,7 @@ export const DonationSchema = z.object({
   status: z.enum(["pending", "completed", "failed", "refunded"]),
 });
 
+// 6. Evidence
 export const EvidenceSchema = z.object({
   id: Id,
   milestoneId: Id,
@@ -66,6 +75,7 @@ export const EvidenceSchema = z.object({
   ]),
 });
 
+// 7. Payout
 export const PayoutSchema = z.object({
   id: Id,
   milestoneId: Id,
@@ -75,6 +85,7 @@ export const PayoutSchema = z.object({
   status: z.enum(["pending", "processing", "paid", "failed"]),
 });
 
+// 8. Ledger Event
 export const LedgerEventSchema = z.object({
   id: Id,
   type: z.string().min(1),
@@ -85,7 +96,7 @@ export const LedgerEventSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
-// Export types derived from the schemas
+// Export TypeScript types derived from Zod schemas
 export type User = z.infer<typeof UserSchema>;
 export type Organization = z.infer<typeof OrganizationSchema>;
 export type Campaign = z.infer<typeof CampaignSchema>;
@@ -94,4 +105,3 @@ export type Donation = z.infer<typeof DonationSchema>;
 export type Evidence = z.infer<typeof EvidenceSchema>;
 export type Payout = z.infer<typeof PayoutSchema>;
 export type LedgerEvent = z.infer<typeof LedgerEventSchema>;
-
