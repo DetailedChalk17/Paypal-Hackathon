@@ -3,6 +3,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { prisma } from "./lib/prisma";
 import authRoutes from "./routes/auth.routes";
+import ledgerRoutes from "./routes/ledger.routes";
 
 const app = express();
 
@@ -14,7 +15,7 @@ app.use(cookieParser());
 
 // Authentication routes
 app.use("/auth", authRoutes);
-
+app.use("/ledger", ledgerRoutes);
 // Basic API health check
 app.get("/health", (_req, res) => {
   res.status(200).json({
