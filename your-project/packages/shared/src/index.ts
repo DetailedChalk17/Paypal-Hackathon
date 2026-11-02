@@ -105,3 +105,27 @@ export type Donation = z.infer<typeof DonationSchema>;
 export type Evidence = z.infer<typeof EvidenceSchema>;
 export type Payout = z.infer<typeof PayoutSchema>;
 export type LedgerEvent = z.infer<typeof LedgerEventSchema>;
+
+/* ==========================================
+   API REQUEST VALIDATION SCHEMAS
+========================================== */
+
+// Create campaign request
+export const CreateCampaignInputSchema = z.object({
+  organizationId: Id,
+  title: z.string().trim().min(1).max(120),
+  goalAmountCents: z.number().int().positive(),
+}).strict();
+
+// Create milestone request
+export const CreateMilestoneInputSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  budgetAmountCents: z.number().int().positive(),
+}).strict();
+
+// Export request types
+export type CreateCampaignInput =
+  z.infer<typeof CreateCampaignInputSchema>;
+
+export type CreateMilestoneInput =
+  z.infer<typeof CreateMilestoneInputSchema>;

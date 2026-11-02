@@ -17,10 +17,7 @@
   "allowScripts": {
     "esbuild@0.28.2": true
   },
-  "allowScripts": {
-  "esbuild@0.28.2": true
-},
-"prisma": {
-  "seed": "tsx prisma/seed.ts"
-}
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
 }
