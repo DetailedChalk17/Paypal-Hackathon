@@ -67,13 +67,15 @@ model User {
 
 // 2. Organization
 model Organization {
-  id          String  @id @default(uuid()) @db.Uuid
-  name        String
-  cause       String
-  location    String
-  payoutEmail String?
-  verified    Boolean @default(false)
-  trustScore  Int     @default(0)
+  id                  String    @id @default(uuid()) @db.Uuid
+  name                String
+  cause               String
+  location            String
+  payoutEmail         String?
+  verified            Boolean   @default(false)
+  trustScore          Int       @default(0)
+  trustScoreBreakdown Json?
+  trustScoreUpdatedAt DateTime? @db.Timestamptz(3)
 
   campaigns Campaign[]
 }
@@ -101,6 +103,7 @@ model Milestone {
   title             String
   budgetAmountCents Int
   status            MilestoneStatus @default(open)
+  dueDate           DateTime?       @db.Timestamptz(3)
 
   campaign Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   evidence Evidence[]
@@ -129,8 +132,8 @@ model Evidence {
   extractedFields  Json
   aiFindings       Json
   reviewerDecision ReviewerDecision @default(pending)
-
-  milestone Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  submittedAt      DateTime         @default(now()) @db.Timestamptz(3)
+  milestone        Milestone        @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
 }
 
 // 7. Payout

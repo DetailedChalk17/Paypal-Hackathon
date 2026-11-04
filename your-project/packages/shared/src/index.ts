@@ -121,6 +121,7 @@ export const CreateCampaignInputSchema = z.object({
 export const CreateMilestoneInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   budgetAmountCents: z.number().int().positive(),
+  dueDate: z.string().datetime({ offset: true }).optional(),
 }).strict();
 
 // Export request types

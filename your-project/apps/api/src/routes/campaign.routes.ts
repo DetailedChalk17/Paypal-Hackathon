@@ -251,12 +251,13 @@ router.post(
 
         // Create the milestone inside the same transaction.
         const milestone = await tx.milestone.create({
-          data: {
-            campaignId: campaign.id,
-            title: input.title,
-            budgetAmountCents: input.budgetAmountCents,
-          },
-        });
+  data: {
+    campaignId: campaign.id,
+    title: input.title,
+    budgetAmountCents: input.budgetAmountCents,
+    dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+  },
+});
 
         return {
           kind: "created" as const,

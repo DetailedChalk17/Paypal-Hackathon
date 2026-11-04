@@ -6,7 +6,8 @@
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "tsc -p tsconfig.json",
-    "test:ledger": "tsx scripts/ledger-test.ts"
+    "test:ledger": "tsx scripts/ledger-test.ts",
+    "test:trust-score": "tsx --test scripts/trust-score.test.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
