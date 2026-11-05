@@ -12,9 +12,6 @@ import {
 } from "./data";
 import type { CampaignDetails, User } from "../api/client";
 
-const noSession = () =>
-  HttpResponse.json({ error: "Authentication required" }, { status: 401 });
-
 function currentUser(): User | null {
   const role = localStorage.getItem("impactledger-demo-role") as User["role"] | null;
   return role ? demoUsers[role] ?? null : null;
@@ -73,9 +70,7 @@ function allocationFor(donation: MockDonation) {
 export const handlers = [
   http.get("/auth/me", () => {
     const user = currentUser();
-    return user
-      ? HttpResponse.json({ user })
-      : noSession();
+    return HttpResponse.json({ user });
   }),
   http.post("/auth/demo-login", async ({ request }) => {
     const body = (await request.json()) as { role?: User["role"] };

@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { UserSchema } from "@your-project/shared";
 import { prisma } from "../lib/prisma";
 import {
+  optionalAuth,
   requireAuth,
   requireRole,
 } from "../middleware/auth.middleware";
@@ -112,15 +113,9 @@ router.post("/logout", (_req, res) => {
 
 // GET /auth/me
 // Returns the currently authenticated user
-router.get("/me", requireAuth, (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({
-      error: "Authentication required",
-    });
-  }
-
+router.get("/me", optionalAuth, (req, res) => {
   return res.status(200).json({
-    user: req.user,
+    user: req.user ?? null,
   });
 });
 

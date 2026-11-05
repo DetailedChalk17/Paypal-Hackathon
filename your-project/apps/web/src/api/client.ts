@@ -143,23 +143,42 @@ export class ApiError extends Error {
   }
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+
+export function apiUrl(path: string) {
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function notifyApiError(message: string) {
+  window.dispatchEvent(new CustomEvent("impactledger:api-error", { detail: { message } }));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = init?.body instanceof FormData;
-  const response = await fetch(path, {
-    ...init,
-    credentials: "include",
-    headers: {
-      ...(init?.body && !isForm ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), {
+      ...init,
+      credentials: "include",
+      headers: {
+        ...(init?.body && !isForm ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? `Unable to reach the service: ${error.message}` : "Unable to reach the service.";
+    notifyApiError(message);
+    throw new ApiError(message, 0);
+  }
   const text = await response.text();
   let payload: unknown;
 
   try {
     payload = text ? JSON.parse(text) : null;
   } catch {
-    throw new Error("The server returned an unreadable response.");
+    const message = "The server returned an unreadable response.";
+    notifyApiError(message);
+    throw new ApiError(message, response.status);
   }
 
   if (!response.ok) {
@@ -170,6 +189,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       typeof payload.error === "string"
         ? payload.error
         : `Request failed (${response.status}).`;
+    notifyApiError(message);
     throw new ApiError(message, response.status);
   }
 
@@ -177,7 +197,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  getMe: () => request<{ user: User }>("/auth/me"),
+  getMe: () => request<{ user: User | null }>("/auth/me"),
   login: (role: User["role"]) =>
     request<{ user: User }>("/auth/demo-login", {
       method: "POST",
@@ -250,6 +270,14 @@ export const api = {
       breakdown: unknown;
       updatedAt: string | null;
     }>(`/organizations/${encodeURIComponent(organizationId)}/trust-score`),
+  recalculateTrustScore: (organizationId: string) =>
+    request<{
+      organizationId: string;
+      organizationName: string;
+      trustScore: number;
+      breakdown: unknown;
+      updatedAt: string | null;
+    }>(`/organizations/${encodeURIComponent(organizationId)}/trust-score/recalculate`, { method: "POST" }),
   getDashboardSummary: (range: "month" | "quarter" | "half" = "half", cause = "All causes") => {
     const params = new URLSearchParams({ range });
     if (cause !== "All causes") params.set("cause", cause);

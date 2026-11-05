@@ -14,14 +14,7 @@ export function TrustProfilePage() {
     enabled: Boolean(organizationId),
   });
   const recalculate = useMutation({
-    mutationFn: () => fetch(`/organizations/${encodeURIComponent(organizationId)}/trust-score/recalculate`, {
-      method: "POST",
-      credentials: "include",
-    }).then(async (response) => {
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? `Request failed (${response.status}).`);
-      return payload;
-    }),
+    mutationFn: () => api.recalculateTrustScore(organizationId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trust-score", organizationId] }),
   });
 

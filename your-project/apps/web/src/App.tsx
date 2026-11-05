@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Link,
@@ -32,6 +32,8 @@ function AppLayout() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState<User["role"]>("donor");
   const [authError, setAuthError] = useState("");
+  const [apiErrorToast, setApiErrorToast] = useState("");
+  const dialogRef = useRef<HTMLElement>(null);
   const userQuery = useQuery({
     queryKey: ["auth", "me"],
     queryFn: api.getMe,
@@ -57,6 +59,53 @@ function AppLayout() {
     },
     onError: (error) => setAuthError(error instanceof Error ? error.message : "Unable to sign out."),
   });
+
+  useEffect(() => {
+    function showApiError(event: Event) {
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message;
+      if (message) setApiErrorToast(message);
+    }
+
+    window.addEventListener("impactledger:api-error", showApiError);
+    return () => window.removeEventListener("impactledger:api-error", showApiError);
+  }, []);
+
+  useEffect(() => {
+    if (!apiErrorToast) return;
+    const timer = window.setTimeout(() => setApiErrorToast(""), 6000);
+    return () => window.clearTimeout(timer);
+  }, [apiErrorToast]);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    function manageDialogKeys(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setDialogOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), [href], select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", manageDialogKeys);
+    return () => {
+      document.removeEventListener("keydown", manageDialogKeys);
+      previousFocus?.focus();
+    };
+  }, [dialogOpen]);
 
   function openSignIn(role: User["role"] = "donor") {
     setSelectedRole(role);
@@ -85,6 +134,7 @@ function AppLayout() {
   return (
     <AuthContext.Provider value={context}>
       <div className="app-shell">
+        <a className="skip-link" href="#main-content">Skip to content</a>
         <aside className="sidebar">
           <Link className="brand" to="/" aria-label="ImpactLedger home">
             <span className="brand-mark">✳</span>
@@ -114,7 +164,7 @@ function AppLayout() {
           <div className="sidebar-footer"><span className="online-dot" /> Every gift, accounted for</div>
         </aside>
 
-        <main className="main-content">
+        <main className="main-content" id="main-content" tabIndex={-1}>
           <header className="topbar">
             <div className="breadcrumb"><Link to="/">ImpactLedger</Link><span>›</span><strong>Good, made visible</strong></div>
             <div className="topbar-actions">
@@ -141,7 +191,7 @@ function AppLayout() {
           <div className="modal-backdrop" onMouseDown={(event) => {
             if (event.target === event.currentTarget) setDialogOpen(false);
           }}>
-            <section className="modal login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+            <section className="modal login-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="login-title">
               <button className="modal-close" aria-label="Close sign in" onClick={() => setDialogOpen(false)}>×</button>
               <span className="modal-kicker">✦ WELCOME TO IMPACTLEDGER</span>
               <h2 id="login-title">Choose your demo role.</h2>
@@ -151,6 +201,7 @@ function AppLayout() {
                   <button
                     key={role}
                     className={`role-option ${selectedRole === role ? "role-option--active" : ""}`}
+                    aria-pressed={selectedRole === role}
                     onClick={() => setSelectedRole(role)}
                   >
                     <span className="role-radio">{selectedRole === role && <i />}</span>
@@ -165,6 +216,12 @@ function AppLayout() {
               </button>
               <p className="privacy-note">Demo access is stored in a local session.</p>
             </section>
+          </div>
+        )}
+        {apiErrorToast && (
+          <div className="api-error-toast" role="alert">
+            <span>{apiErrorToast}</span>
+            <button type="button" aria-label="Dismiss error" onClick={() => setApiErrorToast("")}>×</button>
           </div>
         )}
       </div>

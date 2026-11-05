@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type FailedPayout, type ReviewEvidence } from "../api/client";
+import { api, apiUrl, type FailedPayout, type ReviewEvidence } from "../api/client";
 import { getEvidencePreview } from "../mock/previews";
 
 export function ReviewerPage() {
@@ -93,8 +93,8 @@ export function ReviewerPage() {
           <div className="review-detail-grid">
             <div className="receipt-preview">
               {selected.file.toLowerCase().endsWith(".pdf")
-                ? <iframe src={getEvidencePreview(selected.id) ?? `/evidence-files/${encodeURIComponent(selected.id)}`} title={`Receipt preview: ${selected.file}`} />
-                : <img src={getEvidencePreview(selected.id) ?? `/evidence-files/${encodeURIComponent(selected.id)}`} alt={`Receipt preview: ${selected.file}`} />}
+                ? <iframe src={getEvidencePreview(selected.id) ?? apiUrl(`/evidence-files/${encodeURIComponent(selected.id)}`)} title={`Receipt preview: ${selected.file}`} />
+                : <img src={getEvidencePreview(selected.id) ?? apiUrl(`/evidence-files/${encodeURIComponent(selected.id)}`)} alt={`Receipt preview: ${selected.file}`} />}
               <span>{selected.file}</span>
             </div>
             <div className="extracted-panel">
