@@ -1,4 +1,3 @@
-
 import multer from "multer";
 import express, {
   Request,
@@ -16,6 +15,7 @@ import evidenceRoutes from "./routes/evidence.routes";
 import ledgerRoutes from "./routes/ledger.routes";
 import trustScoreRoutes from "./routes/trust-score.routes";
 import donationDataRoutes from "./routes/donation-data.routes";
+import donationPaymentRoutes from "./routes/donation-payment.routes";
 
 const app = express();
 
@@ -40,7 +40,8 @@ app.use("/ledger", ledgerRoutes);
 
 // B6: Trust score
 app.use("/organizations", trustScoreRoutes);
-
+// P2: PayPal donation payments
+app.use("/donations", donationPaymentRoutes);
 // B6: Donation receipt and trace
 app.use("/donations", donationDataRoutes);
 
