@@ -24,5 +24,10 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "msw": {
+    "workerDirectory": [
+      "apps\\web\\public"
+    ]
   }
 }

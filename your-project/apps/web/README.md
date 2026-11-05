@@ -1,8 +1,22 @@
 # ImpactLedger web app
 
-The React + TypeScript frontend is built with Vite and lives in this workspace.
+The React + TypeScript frontend is built with Vite. Its default API mode is
+MSW-backed demo data, so you can run and explore the UI without starting the
+API or configuring a database:
 
-From `your-project`, start the API in one terminal and the frontend in another:
+```sh
+cd your-project
+npm run dev:web
+```
+
+Open `http://localhost:5173`. Sign in with any of the demo roles to see the
+role-specific navigation and workflows. The app includes the campaign
+marketplace, campaign details and demo donation flow, organizer studio,
+reviewer queue, receipt and trace pages, trust profile, and impact dashboard.
+
+To use the real API instead of the mock service worker, set
+`VITE_API_MODE=real` in the frontend environment and configure the API
+environment and database. Start the API and frontend in separate terminals:
 
 ```sh
 npm run dev --workspace @your-project/api

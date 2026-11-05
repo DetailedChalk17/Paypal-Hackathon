@@ -16,6 +16,10 @@ import ledgerRoutes from "./routes/ledger.routes";
 import trustScoreRoutes from "./routes/trust-score.routes";
 import donationDataRoutes from "./routes/donation-data.routes";
 import donationPaymentRoutes from "./routes/donation-payment.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
+import routingRoutes from "./routes/routing.routes";
+import evidenceFileRoutes from "./routes/evidence-files.routes";
+import payoutRoutes from "./routes/payout.routes";
 
 const app = express();
 
@@ -36,6 +40,7 @@ app.use("/auth", authRoutes);
 app.use("/campaigns", campaignRoutes);
 app.use("/milestones", milestoneEvidenceRoutes);
 app.use("/evidence", evidenceRoutes);
+app.use("/evidence-files", evidenceFileRoutes);
 app.use("/ledger", ledgerRoutes);
 
 // B6: Trust score
@@ -44,6 +49,9 @@ app.use("/organizations", trustScoreRoutes);
 app.use("/donations", donationPaymentRoutes);
 // B6: Donation receipt and trace
 app.use("/donations", donationDataRoutes);
+app.use("/dashboard", dashboardRoutes);
+app.use("/routing", routingRoutes);
+app.use("/payouts", payoutRoutes);
 
 // ==========================================
 // HEALTH CHECK
