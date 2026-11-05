@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@your-project/paypal": "^1.0.0",
     "@your-project/shared": "*",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.6.1",
