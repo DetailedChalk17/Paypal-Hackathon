@@ -89,11 +89,20 @@ router.post(
           "@your-project/paypal"
         );
 
+        const frontendUrl =
+          process.env.FRONTEND_URL ?? "http://localhost:5173";
+        const returnUrl = new URL("/paypal/return", frontendUrl);
+        returnUrl.searchParams.set("donationId", donation.id);
+        const cancelUrl = new URL("/paypal/cancel", frontendUrl);
+        cancelUrl.searchParams.set("donationId", donation.id);
+
         const order = await createOrder({
           campaignId,
           amountCents,
           // Stable for retries of this donation's order request.
           requestId: donation.id,
+          returnUrl: returnUrl.toString(),
+          cancelUrl: cancelUrl.toString(),
         });
 
         // 4. Save the PayPal Order ID.

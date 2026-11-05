@@ -5,6 +5,11 @@
     "apps/*",
     "packages/*"
   ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @your-project/web",
+    "build:web": "npm run build --workspace @your-project/web",
+    "typecheck:web": "npm run typecheck --workspace @your-project/web"
+  },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "prisma": "^6.19.3",
