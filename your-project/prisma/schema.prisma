@@ -160,3 +160,16 @@ model LedgerEvent {
 
   @@index([entityId, createdAt])
 }
+
+// PayPal webhook events — prevents duplicate processing
+model WebhookEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  paypalEventId String   @unique
+  eventType     String
+  resourceId    String?
+  payload       Json
+  receivedAt    DateTime @default(now()) @db.Timestamptz(3)
+  processedAt   DateTime?
+
+  @@index([eventType, receivedAt])
+}

@@ -10,6 +10,7 @@ type PayPalRequestOptions = {
   method: "GET" | "POST";
   body?: unknown;
   requestId?: string;
+  rawBody?: string;
 };
 
 // Cache the access token so we don't authenticate for every API request.
@@ -120,9 +121,12 @@ export async function paypalRequest<T>(
     Accept: "application/json",
   };
 
-  if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
+  if (
+  options.body !== undefined ||
+  options.rawBody !== undefined
+) {
+  headers["Content-Type"] = "application/json";
+}
 
   // Used to help prevent duplicate operations when retrying requests.
   if (options.requestId) {
@@ -135,9 +139,10 @@ export async function paypalRequest<T>(
       method: options.method,
       headers,
       body:
-        options.body !== undefined
-          ? JSON.stringify(options.body)
-          : undefined,
+  options.rawBody ??
+  (options.body !== undefined
+    ? JSON.stringify(options.body)
+    : undefined),
       signal: AbortSignal.timeout(15_000),
     }
   );

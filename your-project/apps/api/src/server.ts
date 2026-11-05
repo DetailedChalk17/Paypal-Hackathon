@@ -1,3 +1,4 @@
+
 import multer from "multer";
 import express, {
   Request,
@@ -16,6 +17,7 @@ import ledgerRoutes from "./routes/ledger.routes";
 import trustScoreRoutes from "./routes/trust-score.routes";
 import donationDataRoutes from "./routes/donation-data.routes";
 import donationPaymentRoutes from "./routes/donation-payment.routes";
+import paypalWebhookRoutes from "./routes/paypal-webhook.routes";
 
 const app = express();
 
@@ -24,6 +26,9 @@ const PORT = Number(process.env.PORT) || 3000;
 // ==========================================
 // MIDDLEWARE
 // ==========================================
+
+// P3: Webhook must receive raw body before JSON parsing.
+app.use("/webhooks", paypalWebhookRoutes);
 
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
@@ -40,8 +45,10 @@ app.use("/ledger", ledgerRoutes);
 
 // B6: Trust score
 app.use("/organizations", trustScoreRoutes);
+
 // P2: PayPal donation payments
 app.use("/donations", donationPaymentRoutes);
+
 // B6: Donation receipt and trace
 app.use("/donations", donationDataRoutes);
 
