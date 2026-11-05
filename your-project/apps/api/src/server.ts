@@ -16,6 +16,8 @@ import ledgerRoutes from "./routes/ledger.routes";
 import trustScoreRoutes from "./routes/trust-score.routes";
 import donationDataRoutes from "./routes/donation-data.routes";
 import donationPaymentRoutes from "./routes/donation-payment.routes";
+import organizationRoutes from "./routes/organization.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
 
 const app = express();
 
@@ -44,6 +46,10 @@ app.use("/organizations", trustScoreRoutes);
 app.use("/donations", donationPaymentRoutes);
 // B6: Donation receipt and trace
 app.use("/donations", donationDataRoutes);
+// B7: Organization marketplace
+app.use("/organizations", organizationRoutes);
+// B7: Dashboard summary
+app.use("/dashboard", dashboardRoutes);
 
 // ==========================================
 // HEALTH CHECK
