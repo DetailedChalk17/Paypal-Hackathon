@@ -118,7 +118,16 @@ async function acquireLedgerLock(
 // APPEND EVENT
 // ==========================================
 
-export async function appendEvent(
+// ==========================================
+// APPEND EVENT
+// ==========================================
+
+// Append an event using an existing transaction.
+// P3 webhooks will use this to update a donation
+// and append its ledger event atomically.
+
+export async function appendEventInTransaction(
+  tx: Prisma.TransactionClient,
   type: string,
   entityId: string,
   payload: Record<string, unknown>
@@ -126,15 +135,11 @@ export async function appendEvent(
   const normalizedType = type.trim();
 
   if (!normalizedType) {
-    throw new Error(
-      "Ledger event type cannot be empty."
-    );
+    throw new Error("Ledger event type cannot be empty.");
   }
 
   if (!entityId) {
-    throw new Error(
-      "Ledger entity ID cannot be empty."
-    );
+    throw new Error("Ledger entity ID cannot be empty.");
   }
 
   const canonicalPayload = canonicalizeJson(payload);
@@ -144,70 +149,64 @@ export async function appendEvent(
     Array.isArray(canonicalPayload) ||
     typeof canonicalPayload !== "object"
   ) {
-    throw new Error(
-      "Ledger payload must be a JSON object."
-    );
+    throw new Error("Ledger payload must be a JSON object.");
   }
 
   const dbPayload =
     canonicalPayload as Prisma.InputJsonObject;
 
-  // All ledger writes use the same advisory lock.
-  // This protects concurrent writes and an empty ledger.
-  return prisma.$transaction(
-    async (tx) => {
-      await acquireLedgerLock(tx);
+  await acquireLedgerLock(tx);
 
-      // Read the latest event after acquiring the lock.
-      const latestEvent = await tx.ledgerEvent.findFirst({
-        orderBy: {
-          createdAt: "desc",
-        },
-        select: {
-          hash: true,
-          createdAt: true,
-        },
-      });
-
-      const prevHash = latestEvent?.hash ?? null;
-
-      // Ensure timestamps are strictly increasing.
-      const now = new Date();
-
-      const createdAt =
-        latestEvent &&
-        now.getTime() <= latestEvent.createdAt.getTime()
-          ? new Date(
-              latestEvent.createdAt.getTime() + 1
-            )
-          : now;
-
-      // Calculate the new event hash.
-      const hash = calculateHash(
-        prevHash,
-        normalizedType,
-        entityId,
-        canonicalPayload,
-        createdAt
-      );
-
-      // Save event and hash in the same transaction.
-      return tx.ledgerEvent.create({
-        data: {
-          type: normalizedType,
-          entityId,
-          payload: dbPayload,
-          prevHash,
-          hash,
-          createdAt,
-        },
-      });
+  const latestEvent = await tx.ledgerEvent.findFirst({
+    orderBy: { createdAt: "desc" },
+    select: {
+      hash: true,
+      createdAt: true,
     },
-    {
-      // Wait up to 10 seconds to acquire a transaction.
-      maxWait: 10000,
+  });
 
-      // Allow time for the advisory-lock retry process.
+  const prevHash = latestEvent?.hash ?? null;
+
+  const now = new Date();
+
+  const createdAt =
+    latestEvent &&
+    now.getTime() <= latestEvent.createdAt.getTime()
+      ? new Date(latestEvent.createdAt.getTime() + 1)
+      : now;
+
+  const hash = calculateHash(
+    prevHash,
+    normalizedType,
+    entityId,
+    canonicalPayload,
+    createdAt
+  );
+
+  return tx.ledgerEvent.create({
+    data: {
+      type: normalizedType,
+      entityId,
+      payload: dbPayload,
+      prevHash,
+      hash,
+      createdAt,
+    },
+  });
+}
+
+// Existing API remains compatible with other services.
+
+export async function appendEvent(
+  type: string,
+  entityId: string,
+  payload: Record<string, unknown>
+) {
+  return prisma.$transaction(
+    (tx) =>
+      appendEventInTransaction(tx, type, entityId, payload),
+    {
+      maxWait: 10000,
       timeout: 35000,
     }
   );
