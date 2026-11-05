@@ -119,6 +119,7 @@ model Donation {
   paypalOrderId   String?        @unique
   paypalCaptureId String?        @unique
   status          DonationStatus @default(pending)
+  completedAt DateTime? @db.Timestamptz(3)
 
   campaign Campaign @relation(fields: [campaignId], references: [id])
   donor    User     @relation(fields: [donorId], references: [id])
