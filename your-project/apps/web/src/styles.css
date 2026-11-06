@@ -347,9 +347,6 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline
   .how-heading h2 br { display: none; }
   .trust-section { gap: 25px; }
 }
-@media (max-width: 620px) {
-  .sidebar { display: none;   }
-
   .side-icon { display: grid; width: 18px; place-items: center; color: #849182; font-size: 18px; }
   .breadcrumb a { color: #9aa198; }
   .role-tag { padding: 4px 7px; border-radius: 12px; background: #edf2e5; color: #70835d; font-size: 8px; }
@@ -800,7 +797,6 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline
     .trust-profile-copy h1 { font-size: 23px; }
     .trust-breakdown-points { grid-template-columns: 1fr; }
   }
-}
   @media print {
     body { min-width: 0; background: white; }
     .sidebar, .topbar, .page-back, .receipt-actions, .ledger-hash-row button, .ledger-verify-result button { display: none !important; }
