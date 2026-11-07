@@ -1,4 +1,3 @@
-
 import multer from "multer";
 import express, {
   Request,
@@ -15,6 +14,7 @@ import authRoutes from "./routes/auth.routes";
 import campaignRoutes from "./routes/campaign.routes";
 import milestoneEvidenceRoutes from "./routes/milestone-evidence.routes";
 import evidenceRoutes from "./routes/evidence.routes";
+import evidenceFileRoutes from "./routes/evidence-files.routes";
 import ledgerRoutes from "./routes/ledger.routes";
 import trustScoreRoutes from "./routes/trust-score.routes";
 import donationDataRoutes from "./routes/donation-data.routes";
@@ -22,10 +22,16 @@ import donationPaymentRoutes from "./routes/donation-payment.routes";
 import paypalWebhookRoutes from "./routes/paypal-webhook.routes";
 import organizationRoutes from "./routes/organization.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
+import routingRoutes from "./routes/routing.routes";
+import payoutRoutes from "./routes/payout.routes";
 
 const app = express();
 
 const PORT = Number(process.env.PORT) || 3000;
+const allowedOrigins = [
+  ...(process.env.FRONTEND_URL ?? "").split(",").map((origin) => origin.trim()).filter(Boolean),
+  ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:5173", "http://127.0.0.1:5173"]),
+];
 
 // Render runs the application behind a reverse proxy.
 app.set("trust proxy", 1);
@@ -65,6 +71,22 @@ app.use("/webhooks", paypalWebhookRoutes);
 // GENERAL MIDDLEWARE
 // ==========================================
 
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Vary", "Origin");
+  }
+
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    return res.sendStatus(204);
+  }
+
+  next();
+});
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
@@ -128,6 +150,7 @@ app.use("/auth", authRoutes);
 app.use("/campaigns", campaignRoutes);
 app.use("/milestones", milestoneEvidenceRoutes);
 app.use("/evidence", evidenceRoutes);
+app.use("/evidence-files", evidenceFileRoutes);
 app.use("/ledger", ledgerRoutes);
 
 // B6: Trust score
@@ -144,6 +167,12 @@ app.use("/organizations", organizationRoutes);
 
 // B7: Dashboard summary
 app.use("/dashboard", dashboardRoutes);
+
+// Routing assistant
+app.use("/routing", routingRoutes);
+
+// Payouts
+app.use("/payouts", payoutRoutes);
 
 // ==========================================
 // CENTRALIZED ERROR HANDLING
@@ -197,6 +226,3 @@ if (process.env.NODE_ENV !== "test") {
 
 export { app };
 export default app;
-app.listen(PORT, () => {
-  console.log(`ImpactLedger API listening on port ${PORT}`);
-});

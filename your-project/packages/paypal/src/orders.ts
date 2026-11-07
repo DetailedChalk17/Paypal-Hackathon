@@ -34,6 +34,8 @@ type CreateOrderInput = {
   campaignId: string;
   amountCents: number;
   requestId: string;
+  returnUrl?: string;
+  cancelUrl?: string;
 };
 
 // Input required to capture a donation order
@@ -75,6 +77,11 @@ function amountToCents(value: string): number {
 // STEP 1: Create a donation order.
 export async function createOrder(input: CreateOrderInput) {
   const { campaignId, amountCents, requestId } = input;
+  const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:5173";
+  const returnUrl =
+    input.returnUrl ?? new URL("/paypal/return", frontendUrl).toString();
+  const cancelUrl =
+    input.cancelUrl ?? new URL("/paypal/cancel", frontendUrl).toString();
 
   if (!campaignId.trim() || campaignId.length > 127) {
     throw new Error("Invalid campaign ID.");
@@ -106,8 +113,8 @@ export async function createOrder(input: CreateOrderInput) {
         brand_name: "ImpactLedger",
         user_action: "PAY_NOW",
         shipping_preference: "NO_SHIPPING",
-        return_url: "https://example.com/paypal/return",
-        cancel_url: "https://example.com/paypal/cancel",
+        return_url: returnUrl,
+        cancel_url: cancelUrl,
       },
     },
   },
