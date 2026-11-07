@@ -15,7 +15,7 @@ export function MarketplacePage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [cause, setCause] = useState("All causes");
   const [location, setLocation] = useState("All locations");
-  const [goal, setGoal] = useState("");
+  const [goal, setGoal] = useState("Support rural education and clean water");
   const [amount, setAmount] = useState("50");
   const [split, setSplit] = useState<SuggestedSplit[]>([]);
   const [routingError, setRoutingError] = useState("");
@@ -165,9 +165,21 @@ export function MarketplacePage() {
           <h2>Not sure where to start?</h2>
           <p>Tell us what matters to you. We’ll suggest a transparent split across high-trust campaigns with meaningful funding gaps.</p>
           <label className="routing-field"><span>Your giving goal</span><input value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="e.g. support rural education" /></label>
+          <div className="routing-chips">
+            {["Clean Water", "Rural Education", "Healthcare", "Environment"].map((chip) => (
+              <button
+                type="button"
+                key={chip}
+                className="chip-button"
+                onClick={() => setGoal(`Support ${chip.toLowerCase()}`)}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
           <label className="routing-field"><span>Amount to give</span><div className="routing-amount"><span>$</span><input type="number" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} /></div></label>
           {routingError && <p className="form-error" role="alert">{routingError}</p>}
-          <button className="button button--dark" disabled={suggest.isPending || !Number(amount)} onClick={() => suggest.mutate()}>
+          <button className="button button--dark" disabled={suggest.isPending || !goal.trim() || !Number(amount)} onClick={() => suggest.mutate()}>
             {suggest.isPending ? "Finding a thoughtful split…" : "Suggest a split"} <span>→</span>
           </button>
         </div>

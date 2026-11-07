@@ -412,6 +412,9 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline
   .routing-copy > p { margin: 0 0 17px; color: #7e8a7d; font-size: 10px; line-height: 1.7; }
   .routing-field { display: grid; gap: 6px; margin-bottom: 10px; color: #697b68; font-size: 9px; font-weight: 600; }
   .routing-field input { width: 100%; height: 37px; padding: 0 10px; border: 1px solid #e0e5d7; border-radius: 6px; background: #fff; color: #536552; font-size: 10px; }
+  .routing-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px; }
+  .chip-button { padding: 4px 10px; border: 1px solid #ccd6c2; border-radius: 12px; background: #ffffffb0; color: #4e6549; font-size: 8px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .chip-button:hover { background: #e3ebd8; border-color: #8da96d; }
   .routing-amount { display: flex; align-items: center; gap: 6px; height: 37px; padding: 0 10px; border: 1px solid #e0e5d7; border-radius: 6px; background: white; color: #71816d; }
   .routing-amount input { height: auto; padding: 0; border: 0; outline: 0; }
   .routing-placeholder { display: grid; min-height: 100%; justify-items: center; align-content: center; padding: 24px; border: 1px dashed #cbd4c0; border-radius: 9px; background: #ffffff70; text-align: center; }
