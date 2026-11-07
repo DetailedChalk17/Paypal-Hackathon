@@ -2,13 +2,16 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
-// ==========================================
-// TRUST SCORE INPUT TYPES
-// ==========================================
-
 type ScoreEvidence = {
+  id: string;
   reviewerDecision: string;
   submittedAt: Date;
+  ledgerApproved: boolean;
+};
+
+type ScorePayout = {
+  id: string;
+  ledgerSucceeded: boolean;
 };
 
 type ScoreMilestone = {
@@ -16,16 +19,13 @@ type ScoreMilestone = {
   dueDate: Date | null;
   budgetAmountCents: number;
   evidence: ScoreEvidence[];
+  payouts: ScorePayout[];
 };
 
 type ScoreCampaign = {
   goalAmountCents: number;
   milestones: ScoreMilestone[];
 };
-
-// ==========================================
-// TRUST SCORE BREAKDOWN
-// ==========================================
 
 type ScoreComponent = {
   weight: number;
@@ -42,7 +42,6 @@ export type TrustScoreBreakdown = {
   coveragePercent: number;
   earnedPoints: number;
   availablePoints: number;
-
   components: {
     approvedWithEvidence: ScoreComponent;
     onTimeUpdates: ScoreComponent;
@@ -50,10 +49,6 @@ export type TrustScoreBreakdown = {
     completedMilestones: ScoreComponent;
   };
 };
-
-// ==========================================
-// HELPERS
-// ==========================================
 
 function calculateComponent(
   weight: number,
@@ -66,36 +61,23 @@ function calculateComponent(
     ? Math.round((numerator / denominator) * weight * 100) / 100
     : 0;
 
-  return {
-    weight,
-    earnedPoints,
-    numerator,
-    denominator,
-    applicable,
-  };
+  return { weight, earnedPoints, numerator, denominator, applicable };
 }
-
-// ==========================================
-// PURE TRUST SCORE CALCULATION
-// No database calls and no AI.
-// ==========================================
 
 export function calculateTrustScore(
   campaigns: ScoreCampaign[],
   now: Date = new Date()
 ): TrustScoreBreakdown {
-  const milestones = campaigns.flatMap(
-    (campaign) => campaign.milestones
-  );
+  const milestones = campaigns.flatMap((campaign) => campaign.milestones);
 
-  // 1. Milestones approved with evidence (40 points).
-
-  const approvedMilestones = milestones.filter(
-    (milestone) =>
-      milestone.evidence.some(
-        (evidence) =>
-          evidence.reviewerDecision === "approved"
-      )
+  // 1. Approved milestones with evidence: 40 points.
+  // Approval must be supported by an evidence_approved ledger event.
+  const approvedMilestones = milestones.filter((milestone) =>
+    milestone.evidence.some(
+      (evidence) =>
+        evidence.reviewerDecision === "approved" &&
+        evidence.ledgerApproved
+    )
   );
 
   const approvedWithEvidence = calculateComponent(
@@ -104,26 +86,19 @@ export function calculateTrustScore(
     milestones.length
   );
 
-  // 2. On-time evidence updates (20 points).
-  // Future milestones without submitted evidence are not
-  // considered overdue or evaluated yet.
-
+  // 2. On-time evidence updates: 20 points.
   const eligibleUpdates = milestones.filter(
     (milestone) =>
       milestone.dueDate !== null &&
-      (
-        milestone.dueDate.getTime() <= now.getTime() ||
-        milestone.evidence.length > 0
-      )
+      (milestone.dueDate.getTime() <= now.getTime() ||
+        milestone.evidence.length > 0)
   );
 
-  const onTimeUpdatesCount = eligibleUpdates.filter(
-    (milestone) =>
-      milestone.evidence.some(
-        (evidence) =>
-          evidence.submittedAt.getTime() <=
-          milestone.dueDate!.getTime()
-      )
+  const onTimeUpdatesCount = eligibleUpdates.filter((milestone) =>
+    milestone.evidence.some(
+      (evidence) =>
+        evidence.submittedAt.getTime() <= milestone.dueDate!.getTime()
+    )
   ).length;
 
   const onTimeUpdates = calculateComponent(
@@ -132,25 +107,22 @@ export function calculateTrustScore(
     eligibleUpdates.length
   );
 
-  // 3. Staying within campaign budgets (20 points).
-  // Only campaigns with at least one milestone are evaluated.
-
+  // 3. Budget compliance: 20 points.
+  // Compare total milestone allocations with the campaign goal.
   const campaignsWithMilestones = campaigns.filter(
     (campaign) => campaign.milestones.length > 0
   );
 
-  const budgetCompliantCampaigns =
-    campaignsWithMilestones.filter((campaign) => {
+  const budgetCompliantCampaigns = campaignsWithMilestones.filter(
+    (campaign) => {
       const allocatedBudget = campaign.milestones.reduce(
-        (total, milestone) =>
-          total + milestone.budgetAmountCents,
+        (total, milestone) => total + milestone.budgetAmountCents,
         0
       );
 
-      return (
-        allocatedBudget <= campaign.goalAmountCents
-      );
-    });
+      return allocatedBudget <= campaign.goalAmountCents;
+    }
+  );
 
   const budgetCompliance = calculateComponent(
     20,
@@ -158,11 +130,10 @@ export function calculateTrustScore(
     campaignsWithMilestones.length
   );
 
-  // 4. Completed milestones (20 points).
-  // A paid milestone is considered completed.
-
-  const completedMilestonesCount = milestones.filter(
-    (milestone) => milestone.status === "paid"
+  // 4. Completed milestones: 20 points.
+  // Completion requires a successful payout ledger event.
+  const completedMilestonesCount = milestones.filter((milestone) =>
+    milestone.payouts.some((payout) => payout.ledgerSucceeded)
   ).length;
 
   const completedMilestones = calculateComponent(
@@ -170,13 +141,6 @@ export function calculateTrustScore(
     completedMilestonesCount,
     milestones.length
   );
-
-  // ==========================================
-  // FINAL SCORE
-  // Normalize over applicable components only.
-  // This avoids penalizing organizations for missing
-  // historical deadline data.
-  // ==========================================
 
   const components = {
     approvedWithEvidence,
@@ -189,22 +153,16 @@ export function calculateTrustScore(
 
   const availablePoints = componentList
     .filter((component) => component.applicable)
-    .reduce(
-      (total, component) => total + component.weight,
-      0
-    );
+    .reduce((total, component) => total + component.weight, 0);
 
   const earnedPoints = componentList.reduce(
-    (total, component) =>
-      total + component.earnedPoints,
+    (total, component) => total + component.earnedPoints,
     0
   );
 
   const score =
     availablePoints > 0
-      ? Math.round(
-          (earnedPoints / availablePoints) * 100
-        )
+      ? Math.round((earnedPoints / availablePoints) * 100)
       : 0;
 
   return {
@@ -218,17 +176,11 @@ export function calculateTrustScore(
   };
 }
 
-// ==========================================
-// CALCULATE AND SAVE ORGANIZATION TRUST SCORE
-// ==========================================
-
 export async function recalculateOrganizationTrustScore(
   organizationId: string
 ) {
   const organization = await prisma.organization.findUnique({
-    where: {
-      id: organizationId,
-    },
+    where: { id: organizationId },
     include: {
       campaigns: {
         include: {
@@ -236,8 +188,14 @@ export async function recalculateOrganizationTrustScore(
             include: {
               evidence: {
                 select: {
+                  id: true,
                   reviewerDecision: true,
                   submittedAt: true,
+                },
+              },
+              payouts: {
+                select: {
+                  id: true,
                 },
               },
             },
@@ -251,21 +209,77 @@ export async function recalculateOrganizationTrustScore(
     throw new Error("Organization not found");
   }
 
-  const breakdown = calculateTrustScore(
-    organization.campaigns
+  const evidenceIds = organization.campaigns.flatMap((campaign) =>
+    campaign.milestones.flatMap((milestone) =>
+      milestone.evidence.map((evidence) => evidence.id)
+    )
   );
 
+  const payoutIds = organization.campaigns.flatMap((campaign) =>
+    campaign.milestones.flatMap((milestone) =>
+      milestone.payouts.map((payout) => payout.id)
+    )
+  );
+
+  // Read the actual approval and payout-success facts from the ledger.
+  const [approvalEvents, payoutEvents] = await Promise.all([
+    evidenceIds.length
+      ? prisma.ledgerEvent.findMany({
+          where: {
+            type: "evidence_approved",
+            entityId: { in: evidenceIds },
+          },
+          select: { entityId: true },
+        })
+      : Promise.resolve([]),
+
+    payoutIds.length
+      ? prisma.ledgerEvent.findMany({
+          where: {
+            type: "PAYOUT_ITEM_SUCCEEDED",
+            entityId: { in: payoutIds },
+          },
+          select: { entityId: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const approvedEvidenceIds = new Set(
+    approvalEvents.map((event) => event.entityId)
+  );
+
+  const successfulPayoutIds = new Set(
+    payoutEvents.map((event) => event.entityId)
+  );
+
+  const scoreCampaigns: ScoreCampaign[] = organization.campaigns.map(
+    (campaign) => ({
+      goalAmountCents: campaign.goalAmountCents,
+      milestones: campaign.milestones.map((milestone) => ({
+        status: milestone.status,
+        dueDate: milestone.dueDate,
+        budgetAmountCents: milestone.budgetAmountCents,
+        evidence: milestone.evidence.map((evidence) => ({
+          ...evidence,
+          ledgerApproved: approvedEvidenceIds.has(evidence.id),
+        })),
+        payouts: milestone.payouts.map((payout) => ({
+          id: payout.id,
+          ledgerSucceeded: successfulPayoutIds.has(payout.id),
+        })),
+      })),
+    })
+  );
+
+  const breakdown = calculateTrustScore(scoreCampaigns);
+
   await prisma.organization.update({
-    where: {
-      id: organizationId,
-    },
+    where: { id: organizationId },
     data: {
       trustScore: breakdown.score,
       trustScoreBreakdown:
         breakdown as unknown as Prisma.InputJsonObject,
-      trustScoreUpdatedAt: new Date(
-        breakdown.calculatedAt
-      ),
+      trustScoreUpdatedAt: new Date(breakdown.calculatedAt),
     },
   });
 
