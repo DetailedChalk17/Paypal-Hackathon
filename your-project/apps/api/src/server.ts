@@ -187,6 +187,16 @@ app.use((
 // START SERVER
 // ==========================================
 
+if (process.env.NODE_ENV !== "test") {
+  app.listen(PORT, () => {
+    console.log(
+      `ImpactLedger API running at http://localhost:${PORT}`
+    );
+  });
+}
+
+export { app };
+export default app;
 app.listen(PORT, () => {
   console.log(`ImpactLedger API listening on port ${PORT}`);
 });

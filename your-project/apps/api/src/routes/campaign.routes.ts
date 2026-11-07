@@ -13,6 +13,8 @@ import {
   CreateMilestoneInputSchema,
 } from "@your-project/shared";
 
+import { draftImpactUpdate } from "../services/ai.service";
+
 const router = Router();
 
 // ==========================================
@@ -293,5 +295,106 @@ router.post(
     }
   }
 );
+
+// ==========================================
+// GET /campaigns/:campaignId/impact-update
+// Generate AI impact update for donors
+// ==========================================
+
+router.get("/:campaignId/impact-update", async (req, res) => {
+  const campaignId = req.params.campaignId;
+
+  if (typeof campaignId !== "string") {
+    return res.status(400).json({
+      error: "Invalid campaign ID",
+    });
+  }
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        organization: true,
+        donations: {
+          where: { status: "completed" },
+          select: {
+            amountCents: true,
+            donorId: true,
+          },
+        },
+        milestones: {
+          include: {
+            payouts: {
+              where: { status: "paid" },
+              select: { amountCents: true },
+            },
+          },
+          orderBy: { dueDate: "asc" },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({
+        error: "Campaign not found",
+      });
+    }
+
+    const raisedCents = campaign.donations.reduce(
+      (sum, d) => sum + d.amountCents,
+      0
+    );
+
+    const donorCount = new Set(campaign.donations.map((d) => d.donorId)).size;
+
+    const milestones = campaign.milestones.map((m) => {
+      const paidCents = m.payouts.reduce(
+        (sum, p) => sum + p.amountCents,
+        0
+      );
+      return {
+        title: m.title,
+        status: m.status as "open" | "evidence_submitted" | "approved" | "rejected" | "paid",
+        budgetCents: m.budgetAmountCents,
+        paidCents,
+      };
+    });
+
+    const latestLedger = await prisma.ledgerEvent.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: { hash: true },
+    });
+
+    const facts = {
+      campaignTitle: campaign.title,
+      organizationName: campaign.organization.name,
+      goalCents: campaign.goalAmountCents,
+      raisedCents,
+      donorCount,
+      milestones,
+      latestLedgerHash: latestLedger?.hash ?? null,
+    };
+
+    const result = await draftImpactUpdate(facts);
+
+    if (!result.ok) {
+      return res.status(500).json({
+        error: "Failed to generate impact update",
+        reason: result.reason,
+      });
+    }
+
+    return res.status(200).json({
+      facts,
+      update: result.data,
+    });
+  } catch (error) {
+    console.error("Impact update error:", error);
+
+    return res.status(500).json({
+      error: "Failed to generate impact update",
+    });
+  }
+});
 
 export default router;

@@ -9,8 +9,7 @@ import {
 
 import { uploadEvidence } from "../middleware/upload.middleware";
 import { prisma } from "../lib/prisma";
-
-import { analyzeWithTimeout } from "../services/ai.service";
+import { analyzeEvidenceFile } from "../services/ai.service";
 
 const router = Router();
 
@@ -41,7 +40,11 @@ router.post(
             const milestone = await prisma.milestone.findUnique({
                 where: { id: milestoneId },
                 include: {
-                    campaign: true,
+                    campaign: {
+                        include: {
+                            organization: true,
+                        },
+                    },
                 },
             });
 
@@ -97,26 +100,72 @@ router.post(
 
                 return created;
             });
-            let aiFindings;
 
-            try {
-                aiFindings = await analyzeWithTimeout(file.path);
-            } catch (error) {
-                aiFindings = {
-                    status: "failed",
-                    message:
-                        error instanceof Error
-                            ? error.message
-                            : "AI analysis failed",
-                };
-            }
+            // Calculate spent amount from completed payouts
+            const spentAgg = await prisma.payout.aggregate({
+                where: {
+                    milestoneId: milestone.id,
+                    status: "paid",
+                },
+                _sum: {
+                    amountCents: true,
+                },
+            });
+            const spentCents = spentAgg._sum.amountCents ?? 0;
+
+            // Gather prior evidence for duplicate check
+            const priorEvidenceRecords = await prisma.evidence.findMany({
+                where: {
+                    milestone: {
+                        campaignId: milestone.campaignId,
+                    },
+                    NOT: {
+                        id: evidence.id,
+                    },
+                },
+                select: {
+                    id: true,
+                    extractedFields: true,
+                },
+            });
+
+            const priorEvidence = priorEvidenceRecords
+                .filter(
+                    (e) =>
+                        e.extractedFields &&
+                        typeof e.extractedFields === "object" &&
+                        Object.keys(e.extractedFields).length > 0
+                )
+                .map((e) => ({
+                    id: e.id,
+                    extraction: e.extractedFields as any,
+                }));
+
+            // Run AI analysis (extraction + consistency checks). Never throws.
+            const analysis = await analyzeEvidenceFile(file.path, {
+                milestone: {
+                    id: milestone.id,
+                    title: milestone.title,
+                    budgetAmountCents: milestone.budgetAmountCents,
+                    dueDate: milestone.dueDate?.toISOString() ?? null,
+                },
+                campaign: {
+                    id: milestone.campaign.id,
+                    title: milestone.campaign.title,
+                    cause: milestone.campaign.organization?.cause ?? null,
+                    organizationName: milestone.campaign.organization?.name ?? null,
+                },
+                spentCents,
+                priorEvidence,
+            });
 
             const updatedEvidence = await prisma.evidence.update({
                 where: {
                     id: evidence.id,
                 },
                 data: {
-                    aiFindings,
+                    extractedFields: (analysis.extraction ?? {}) as any,
+                    aiFindings: analysis as any,
                 },
             });
 

@@ -7,6 +7,7 @@ import {
 
 import { prisma } from "../lib/prisma";
 import { appendEvent } from "../services/ledger.service";
+import { parseDonationRequest, routeDonation } from "../services/ai.service";
 
 const router = Router();
 
@@ -326,6 +327,126 @@ router.post(
 
       return res.status(502).json({
         error: "Unable to capture PayPal donation",
+      });
+    }
+  }
+);
+
+// ==========================================
+// POST /donations/assistant
+// Smart donation routing assistant
+// ==========================================
+
+router.post(
+  "/assistant",
+  requireAuth,
+  requireRole("donor"),
+  async (req, res) => {
+    const { prompt, amountCents: explicitAmountCents } = req.body ?? {};
+
+    if (!prompt && typeof explicitAmountCents !== "number") {
+      return res.status(400).json({
+        error: "Either prompt or amountCents is required",
+      });
+    }
+
+    try {
+      // 1. Fetch available causes to help parsing
+      const orgs = await prisma.organization.findMany({
+        select: { cause: true },
+        distinct: ["cause"],
+      });
+      const knownCauses = orgs.map((o) => o.cause).filter(Boolean);
+
+      let parsedRequest = null;
+      let targetAmountCents =
+        typeof explicitAmountCents === "number" && explicitAmountCents > 0
+          ? explicitAmountCents
+          : null;
+
+      if (typeof prompt === "string" && prompt.trim().length > 0) {
+        const parseRes = await parseDonationRequest(prompt, { knownCauses });
+        if (parseRes.ok) {
+          parsedRequest = parseRes.data;
+          if (!targetAmountCents && parseRes.data.amountCents) {
+            targetAmountCents = parseRes.data.amountCents;
+          }
+        }
+      }
+
+      if (!targetAmountCents || targetAmountCents <= 0) {
+        return res.status(200).json({
+          parsedRequest,
+          routing: null,
+          message: "Please specify a donation amount (e.g. $25 for education)",
+        });
+      }
+
+      // 2. Fetch active campaigns with funding gaps
+      const activeCampaigns = await prisma.campaign.findMany({
+        where: {
+          status: "active",
+          currency: "USD",
+        },
+        include: {
+          organization: true,
+          donations: {
+            where: {
+              status: "completed",
+            },
+            select: {
+              amountCents: true,
+            },
+          },
+        },
+      });
+
+      const shortlist = activeCampaigns
+        .map((c) => {
+          const raisedCents = c.donations.reduce(
+            (sum, d) => sum + d.amountCents,
+            0
+          );
+          return {
+            campaignId: c.id,
+            title: c.title,
+            organizationName: c.organization.name,
+            cause: c.organization.cause,
+            trustScore: c.organization.trustScore,
+            goalCents: c.goalAmountCents,
+            raisedCents,
+          };
+        })
+        .filter((c) => c.goalCents > c.raisedCents);
+
+      if (shortlist.length === 0) {
+        return res.status(200).json({
+          parsedRequest,
+          routing: {
+            allocations: [],
+            leftoverCents: targetAmountCents,
+            source: "trust_rank_fallback",
+          },
+          message: "No active campaigns currently have funding gaps",
+        });
+      }
+
+      // 3. Route donation across shortlisted campaigns
+      const routeRes = await routeDonation({
+        amountCents: targetAmountCents,
+        shortlist,
+        request: typeof prompt === "string" ? prompt : undefined,
+      });
+
+      return res.status(200).json({
+        parsedRequest,
+        routing: routeRes.ok ? routeRes.data : null,
+      });
+    } catch (error) {
+      console.error("Donation assistant error:", error);
+
+      return res.status(500).json({
+        error: "Failed to process donation assistance",
       });
     }
   }

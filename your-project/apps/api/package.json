@@ -8,10 +8,12 @@
     "build": "tsc -p tsconfig.json",
     "test:ledger": "tsx scripts/ledger-test.ts",
     "test:trust-score": "tsx --test scripts/trust-score.test.ts",
+    "test:e2e": "NODE_ENV=test tsx --env-file=../../.env scripts/e2e-integration.test.ts"
     "start": "node dist/server.js"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@your-project/ai": "*",
     "@your-project/paypal": "^1.0.0",
     "@your-project/shared": "*",
     "cookie-parser": "^1.4.7",

@@ -85,6 +85,7 @@ router.post("/demo-login", async (req, res) => {
     return res.status(200).json({
       message: "Demo login successful",
       user,
+      token,
     });
 
   } catch (error) {

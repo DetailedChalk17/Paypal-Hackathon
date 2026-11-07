@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Secrets (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+
+# Logs and OS files
+*.log
+npm-debug.log*
+.DS_Store
