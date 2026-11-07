@@ -1,6 +1,9 @@
 
 import { PrismaClient } from "@prisma/client";
 
+import { prisma as apiPrisma } from "../apps/api/src/lib/prisma";
+import { recalculateOrganizationTrustScore } from "../apps/api/src/services/trust-score.service";
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -66,7 +69,6 @@ async function main() {
       location: "Bengaluru",
       payoutEmail: "payments@greenearth.example",
       verified: true,
-      trustScore: 88,
     },
     {
       id: "20000000-0000-4000-8000-000000000002",
@@ -75,7 +77,6 @@ async function main() {
       location: "Mysuru",
       payoutEmail: "payments@brightfutures.example",
       verified: true,
-      trustScore: 94,
     },
     {
       id: "20000000-0000-4000-8000-000000000003",
@@ -84,7 +85,6 @@ async function main() {
       location: "Bengaluru",
       payoutEmail: "payments@healthbridge.example",
       verified: true,
-      trustScore: 82,
     },
     {
       id: "20000000-0000-4000-8000-000000000004",
@@ -93,7 +93,6 @@ async function main() {
       location: "Hubballi",
       payoutEmail: "payments@safewater.example",
       verified: true,
-      trustScore: 76,
     },
     {
       id: "20000000-0000-4000-8000-000000000005",
@@ -102,7 +101,6 @@ async function main() {
       location: "Mangaluru",
       payoutEmail: "payments@womenforward.example",
       verified: true,
-      trustScore: 91,
     },
     {
       id: "20000000-0000-4000-8000-000000000006",
@@ -111,7 +109,6 @@ async function main() {
       location: "Tumakuru",
       payoutEmail: "payments@ruralskills.example",
       verified: false,
-      trustScore: 73,
     },
     {
       id: "20000000-0000-4000-8000-000000000007",
@@ -120,7 +117,6 @@ async function main() {
       location: "Bengaluru",
       payoutEmail: "payments@animalcare.example",
       verified: true,
-      trustScore: 68,
     },
     {
       id: "20000000-0000-4000-8000-000000000008",
@@ -129,7 +125,6 @@ async function main() {
       location: "Shivamogga",
       payoutEmail: "payments@foodfamily.example",
       verified: true,
-      trustScore: 85,
     },
   ];
 
@@ -260,12 +255,36 @@ async function main() {
 
   console.log("Created/updated 16 demo milestones.");
 
+  // ==========================================
+  // 5. RECALCULATE REAL TRUST SCORES
+  // ==========================================
+
+  console.log("\nCalculating organization trust scores...");
+
+  for (const organization of organizations) {
+    const result = await recalculateOrganizationTrustScore(
+      organization.id
+    );
+
+    console.log(
+      `${organization.name}: ${result.score}/100`
+    );
+  }
+
+  console.log("All organization trust scores saved.");
+
+  // ==========================================
+  // 6. SEED SUMMARY
+  // ==========================================
+
   console.log("\nImpactLedger database seeding completed!");
+
   console.log({
     users: 3,
     organizations: 8,
     campaigns: 8,
     milestones: 16,
+    trustScoresCalculated: 8,
   });
 }
 
@@ -275,5 +294,8 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      apiPrisma.$disconnect(),
+    ]);
   });

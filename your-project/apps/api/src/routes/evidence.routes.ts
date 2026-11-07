@@ -9,8 +9,8 @@ import {
 import { prisma } from "../lib/prisma";
 
 import { appendEvent } from "../services/ledger.service";
-
 import { sendMockPayout } from "../services/payout.service";
+import { recalculateOrganizationTrustScore } from "../services/trust-score.service";
 
 const router = Router();
 
@@ -52,8 +52,6 @@ router.get(
     }
 );
 
-
-
 // POST /evidence/:id/approve
 router.post(
     "/:id/approve",
@@ -63,23 +61,32 @@ router.post(
         const evidenceId = req.params.id;
 
         if (typeof evidenceId !== "string") {
-            return res.status(400).json({ error: "Invalid evidence ID" });
+            return res.status(400).json({
+                error: "Invalid evidence ID",
+            });
         }
 
         try {
             const evidence = await prisma.evidence.findUnique({
-                where: { id: evidenceId },
+                where: {
+                    id: evidenceId,
+                },
                 include: {
                     milestone: {
-                        include: { campaign: true },
+                        include: {
+                            campaign: true,
+                        },
                     },
                 },
             });
 
             if (!evidence) {
-                return res.status(404).json({ error: "Evidence not found" });
+                return res.status(404).json({
+                    error: "Evidence not found",
+                });
             }
 
+            // Organizers cannot approve their own evidence.
             if (evidence.milestone.campaign.organizerId === req.user!.id) {
                 return res.status(403).json({
                     error: "Organizers cannot approve their own evidence",
@@ -98,6 +105,7 @@ router.post(
                 });
             }
 
+            // Atomically claim the pending evidence.
             const claimed = await prisma.evidence.updateMany({
                 where: {
                     id: evidenceId,
@@ -118,11 +126,15 @@ router.post(
             }
 
             await prisma.milestone.update({
-                where: { id: evidence.milestoneId },
-                data: { status: "approved" },
+                where: {
+                    id: evidence.milestoneId,
+                },
+                data: {
+                    status: "approved",
+                },
             });
 
-
+            // Record approval in the tamper-evident ledger.
             await appendEvent(
                 "evidence_approved",
                 evidenceId,
@@ -132,7 +144,7 @@ router.post(
                 }
             );
 
-            // Create payout record
+            // Create payout record.
             const payout = await prisma.payout.create({
                 data: {
                     milestoneId: evidence.milestoneId,
@@ -141,9 +153,11 @@ router.post(
                 },
             });
 
-            // Call mocked PayPal payout
+            // Execute mocked PayPal payout.
+            let result: Awaited<ReturnType<typeof sendMockPayout>>;
+
             try {
-                const result = await sendMockPayout({
+                result = await sendMockPayout({
                     milestoneId: evidence.milestoneId,
                     amountCents: payout.amountCents,
                 });
@@ -151,30 +165,16 @@ router.post(
                 if (!result.success) {
                     throw new Error("Mock payout failed");
                 }
-
-                const updatedPayout = await prisma.payout.update({
-                    where: { id: payout.id },
-                    data: {
-                        status: "paid",
-                        senderBatchId: result.senderBatchId,
-                    },
-                });
-
-                await prisma.milestone.update({
-                    where: { id: evidence.milestoneId },
-                    data: { status: "paid" },
-                });
-
-                return res.status(200).json({
-                    message: "Evidence approved and payout completed",
-                    payout: updatedPayout,
-                });
             } catch (error) {
                 console.error("Payout error:", error);
 
                 await prisma.payout.update({
-                    where: { id: payout.id },
-                    data: { status: "failed" },
+                    where: {
+                        id: payout.id,
+                    },
+                    data: {
+                        status: "failed",
+                    },
                 });
 
                 return res.status(502).json({
@@ -182,11 +182,51 @@ router.post(
                 });
             }
 
+            // Persist successful payout.
+            const updatedPayout = await prisma.payout.update({
+                where: {
+                    id: payout.id,
+                },
+                data: {
+                    status: "paid",
+                    senderBatchId: result.senderBatchId,
+                },
+            });
+
+            await prisma.milestone.update({
+                where: {
+                    id: evidence.milestoneId,
+                },
+                data: {
+                    status: "paid",
+                },
+            });
+
+            // Record successful mock payout in the ledger.
+            await appendEvent(
+                "PAYOUT_ITEM_SUCCEEDED",
+                payout.id,
+                {
+                    senderBatchId: result.senderBatchId,
+                    source: "mock_payout",
+                }
+            );
+
+            // Refresh and persist the organization's trust score.
+            const trustScore = await recalculateOrganizationTrustScore(
+                evidence.milestone.campaign.organizationId
+            );
+
+            return res.status(200).json({
+                message: "Evidence approved and payout completed",
+                payout: updatedPayout,
+                trustScore,
+            });
         } catch (error) {
             console.error("Evidence approval error:", error);
 
             return res.status(500).json({
-                error: "Failed to approve evidence",
+                error: "Failed to complete evidence approval",
             });
         }
     }
@@ -201,23 +241,33 @@ router.post(
         const evidenceId = req.params.id;
 
         if (typeof evidenceId !== "string") {
-            return res.status(400).json({ error: "Invalid evidence ID" });
+            return res.status(400).json({
+                error: "Invalid evidence ID",
+            });
         }
 
         try {
             const evidence = await prisma.evidence.findUnique({
-                where: { id: evidenceId },
-                include: { milestone: true },
+                where: {
+                    id: evidenceId,
+                },
+                include: {
+                    milestone: true,
+                },
             });
 
             if (!evidence) {
-                return res.status(404).json({ error: "Evidence not found" });
+                return res.status(404).json({
+                    error: "Evidence not found",
+                });
             }
+
             if (evidence.milestone.status !== "evidence_submitted") {
                 return res.status(400).json({
                     error: "Milestone is not awaiting review",
                 });
             }
+
             if (evidence.reviewerDecision !== "pending") {
                 return res.status(400).json({
                     error: "Evidence has already been reviewed",
@@ -244,9 +294,14 @@ router.post(
             }
 
             await prisma.milestone.update({
-                where: { id: evidence.milestoneId },
-                data: { status: "rejected" },
+                where: {
+                    id: evidence.milestoneId,
+                },
+                data: {
+                    status: "rejected",
+                },
             });
+
             return res.status(200).json({
                 message: "Evidence rejected",
             });
@@ -259,6 +314,5 @@ router.post(
         }
     }
 );
-
 
 export default router;

@@ -1,4 +1,3 @@
-
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -8,11 +7,13 @@ const now = new Date("2026-11-04T12:00:00.000Z");
 
 function makeEvidence(
   reviewerDecision: string,
-  submittedAt: string
+  submittedAt: string,
+  ledgerApproved = false
 ) {
   return {
     reviewerDecision,
     submittedAt: new Date(submittedAt),
+    ledgerApproved,
   };
 }
 
@@ -20,13 +21,17 @@ function makeMilestone(
   status: string,
   dueDate: string | null,
   budgetAmountCents: number,
-  evidence: ReturnType<typeof makeEvidence>[] = []
+  evidence: ReturnType<typeof makeEvidence>[] = [],
+  successfulPayout = false
 ) {
   return {
     status,
     dueDate: dueDate ? new Date(dueDate) : null,
     budgetAmountCents,
     evidence,
+    payouts: successfulPayout
+      ? [{ id: "test-payout", ledgerSucceeded: true }]
+      : [],
   };
 }
 
@@ -42,9 +47,11 @@ const excellentCampaign = [
         [
           makeEvidence(
             "approved",
-            "2026-10-19T12:00:00.000Z"
+            "2026-10-19T12:00:00.000Z",
+            true
           ),
-        ]
+        ],
+        true
       ),
       makeMilestone(
         "paid",
@@ -53,9 +60,11 @@ const excellentCampaign = [
         [
           makeEvidence(
             "approved",
-            "2026-10-29T12:00:00.000Z"
+            "2026-10-29T12:00:00.000Z",
+            true
           ),
-        ]
+        ],
+        true
       ),
     ],
   },
@@ -84,9 +93,11 @@ const averageCampaign = [
         [
           makeEvidence(
             "approved",
-            "2026-10-23T12:00:00.000Z"
+            "2026-10-23T12:00:00.000Z",
+            true
           ),
-        ]
+        ],
+        true
       ),
     ],
   },
@@ -97,87 +108,38 @@ const incompleteCampaign = [
   {
     goalAmountCents: 100000,
     milestones: [
-      makeMilestone(
-        "open",
-        null,
-        100000
-      ),
+      makeMilestone("open", null, 100000),
     ],
   },
 ];
 
 test("Sample 1: Excellent organization receives 100", () => {
-  const result = calculateTrustScore(
-    excellentCampaign,
-    now
-  );
+  const result = calculateTrustScore(excellentCampaign, now);
 
   assert.equal(result.score, 100);
   assert.equal(result.coveragePercent, 100);
-
-  assert.equal(
-    result.components.approvedWithEvidence.earnedPoints,
-    40
-  );
-
-  assert.equal(
-    result.components.onTimeUpdates.earnedPoints,
-    20
-  );
-
-  assert.equal(
-    result.components.budgetCompliance.earnedPoints,
-    20
-  );
-
-  assert.equal(
-    result.components.completedMilestones.earnedPoints,
-    20
-  );
+  assert.equal(result.components.approvedWithEvidence.earnedPoints, 40);
+  assert.equal(result.components.onTimeUpdates.earnedPoints, 20);
+  assert.equal(result.components.budgetCompliance.earnedPoints, 20);
+  assert.equal(result.components.completedMilestones.earnedPoints, 20);
 });
 
 test("Sample 2: Mixed performance receives 40", () => {
-  const result = calculateTrustScore(
-    averageCampaign,
-    now
-  );
+  const result = calculateTrustScore(averageCampaign, now);
 
   assert.equal(result.score, 40);
-
-  assert.equal(
-    result.components.approvedWithEvidence.earnedPoints,
-    20
-  );
-
-  assert.equal(
-    result.components.onTimeUpdates.earnedPoints,
-    10
-  );
-
-  assert.equal(
-    result.components.budgetCompliance.earnedPoints,
-    0
-  );
-
-  assert.equal(
-    result.components.completedMilestones.earnedPoints,
-    10
-  );
+  assert.equal(result.components.approvedWithEvidence.earnedPoints, 20);
+  assert.equal(result.components.onTimeUpdates.earnedPoints, 10);
+  assert.equal(result.components.budgetCompliance.earnedPoints, 0);
+  assert.equal(result.components.completedMilestones.earnedPoints, 10);
 });
 
 test("Sample 3: Missing deadlines reduces score coverage", () => {
-  const result = calculateTrustScore(
-    incompleteCampaign,
-    now
-  );
+  const result = calculateTrustScore(incompleteCampaign, now);
 
   assert.equal(result.score, 25);
   assert.equal(result.coveragePercent, 80);
-
-  assert.equal(
-    result.components.onTimeUpdates.applicable,
-    false
-  );
+  assert.equal(result.components.onTimeUpdates.applicable, false);
 });
 
 test("Empty campaign list returns zero without errors", () => {
