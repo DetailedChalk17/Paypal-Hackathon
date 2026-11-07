@@ -6,6 +6,8 @@ import express, {
   NextFunction,
 } from "express";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 
 import { prisma } from "./lib/prisma";
 
@@ -25,45 +27,53 @@ const app = express();
 
 const PORT = Number(process.env.PORT) || 3000;
 
+// Render runs the application behind a reverse proxy.
+app.set("trust proxy", 1);
+
 // ==========================================
-// MIDDLEWARE
+// SECURITY MIDDLEWARE
 // ==========================================
 
-// P3: Webhook must receive raw body before JSON parsing.
+app.use(helmet());
+
+// ==========================================
+// REQUEST LOGGING
+// ==========================================
+
+app.use((req, res, next) => {
+  const startTime = Date.now();
+
+  res.on("finish", () => {
+    const duration = Date.now() - startTime;
+
+    console.log(
+      `${req.method} ${req.path} ${res.statusCode} ${duration}ms`
+    );
+  });
+
+  next();
+});
+
+// ==========================================
+// PAYPAL WEBHOOKS
+// Must run before JSON body parsing.
+// ==========================================
+
 app.use("/webhooks", paypalWebhookRoutes);
+
+// ==========================================
+// GENERAL MIDDLEWARE
+// ==========================================
 
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
-
-// ==========================================
-// API ROUTES
-// ==========================================
-
-app.use("/auth", authRoutes);
-app.use("/campaigns", campaignRoutes);
-app.use("/milestones", milestoneEvidenceRoutes);
-app.use("/evidence", evidenceRoutes);
-app.use("/ledger", ledgerRoutes);
-
-// B6: Trust score
-app.use("/organizations", trustScoreRoutes);
-
-// P2: PayPal donation payments
-app.use("/donations", donationPaymentRoutes);
-
-// B6: Donation receipt and trace
-app.use("/donations", donationDataRoutes);
-// B7: Organization marketplace
-app.use("/organizations", organizationRoutes);
-// B7: Dashboard summary
-app.use("/dashboard", dashboardRoutes);
 
 // ==========================================
 // HEALTH CHECK
 // ==========================================
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({
+  return res.status(200).json({
     status: "ok",
     service: "impactledger-api",
     message: "ImpactLedger API is running",
@@ -93,6 +103,47 @@ app.get("/health/db", async (_req, res) => {
     });
   }
 });
+
+// ==========================================
+// API RATE LIMITING
+// ==========================================
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 200,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    error: "Too many requests. Please try again later.",
+  },
+});
+
+app.use(apiLimiter);
+
+// ==========================================
+// API ROUTES
+// ==========================================
+
+app.use("/auth", authRoutes);
+app.use("/campaigns", campaignRoutes);
+app.use("/milestones", milestoneEvidenceRoutes);
+app.use("/evidence", evidenceRoutes);
+app.use("/ledger", ledgerRoutes);
+
+// B6: Trust score
+app.use("/organizations", trustScoreRoutes);
+
+// PayPal donations
+app.use("/donations", donationPaymentRoutes);
+
+// B6: Donation receipt and trace
+app.use("/donations", donationDataRoutes);
+
+// B7: Organization marketplace
+app.use("/organizations", organizationRoutes);
+
+// B7: Dashboard summary
+app.use("/dashboard", dashboardRoutes);
 
 // ==========================================
 // CENTRALIZED ERROR HANDLING
@@ -137,7 +188,5 @@ app.use((
 // ==========================================
 
 app.listen(PORT, () => {
-  console.log(
-    `ImpactLedger API running at http://localhost:${PORT}`
-  );
+  console.log(`ImpactLedger API listening on port ${PORT}`);
 });
