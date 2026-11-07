@@ -119,7 +119,7 @@ model Donation {
   paypalOrderId   String?        @unique
   paypalCaptureId String?        @unique
   status          DonationStatus @default(pending)
-  completedAt DateTime? @db.Timestamptz(3)
+  completedAt     DateTime?      @db.Timestamptz(3)
 
   campaign Campaign @relation(fields: [campaignId], references: [id])
   donor    User     @relation(fields: [donorId], references: [id])
@@ -164,13 +164,13 @@ model LedgerEvent {
 
 // PayPal webhook events — prevents duplicate processing
 model WebhookEvent {
-  id            String   @id @default(uuid()) @db.Uuid
-  paypalEventId String   @unique
+  id            String    @id @default(uuid()) @db.Uuid
+  paypalEventId String    @unique
   eventType     String
   resourceId    String?
   payload       Json
-  receivedAt    DateTime @default(now()) @db.Timestamptz(3)
-  processedAt   DateTime?
+  receivedAt    DateTime  @default(now()) @db.Timestamptz(3)
+  processedAt   DateTime? @db.Timestamptz(3)
 
   @@index([eventType, receivedAt])
 }
