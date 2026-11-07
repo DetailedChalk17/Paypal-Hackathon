@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": [
+    "src/index.ts",
+    "src/client.ts",
+    "src/orders.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

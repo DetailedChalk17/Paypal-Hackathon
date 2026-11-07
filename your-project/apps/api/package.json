@@ -1,0 +1,28 @@
+{
+  "name": "@your-project/api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
+    "test:ledger": "tsx scripts/ledger-test.ts",
+    "test:trust-score": "tsx --test scripts/trust-score.test.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "@your-project/paypal": "^1.0.0",
+    "@your-project/shared": "*",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.6.1",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.3.0"
+  }
+}

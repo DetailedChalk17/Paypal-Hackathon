@@ -1,0 +1,21 @@
+{
+  "name": "@your-project/paypal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test:auth": "node --env-file=../../.env --import tsx src/test-auth.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:order": "node --env-file=../../.env --import tsx src/test-create-order.ts",
+    "test:capture": "node --env-file=../../.env --import tsx src/test-capture-order.ts"
+  }
+}

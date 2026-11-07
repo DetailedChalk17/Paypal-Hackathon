@@ -148,7 +148,7 @@ describe("routeDonation (trust-rank split)", () => {
 
 describe("shared schema additions are optional", () => {
   it("existing Campaign and Milestone shapes still parse", () => {
-    const base = { organizationId: milestone.id, goalAmountCents: 100_000, currency: "USD", status: "active" };
+    const base = { organizationId: milestone.id, organizerId: null, goalAmountCents: 100_000, currency: "USD", status: "active" };
     expect(CampaignSchema.safeParse({ ...base, id: campaign.id, title: campaign.title }).success).toBe(true);
     expect(CampaignSchema.safeParse({ ...base, ...campaign }).success).toBe(true);
     expect(CampaignSchema.safeParse({ ...base, ...campaign, startDate: "Oct 1" }).success).toBe(false);

@@ -1,5 +1,3 @@
-// Add a datasource, generator, and models when selecting the database and app requirements.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,12 +7,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// User roles
 enum UserRole {
   donor
   organizer
   reviewer
 }
 
+// Campaign status
 enum CampaignStatus {
   draft
   active
@@ -22,6 +22,7 @@ enum CampaignStatus {
   cancelled
 }
 
+// Milestone status
 enum MilestoneStatus {
   open
   evidence_submitted
@@ -30,6 +31,7 @@ enum MilestoneStatus {
   paid
 }
 
+// Donation status
 enum DonationStatus {
   pending
   completed
@@ -37,12 +39,14 @@ enum DonationStatus {
   refunded
 }
 
+// Evidence review decision
 enum ReviewerDecision {
   pending
   approved
   rejected
 }
 
+// Payout status
 enum PayoutStatus {
   pending
   processing
@@ -50,35 +54,41 @@ enum PayoutStatus {
   failed
 }
 
+// 1. User
 model User {
-  id        String     @id @default(uuid()) @db.Uuid
-  role      UserRole
-  name      String
-  email     String     @unique
+  id    String   @id @default(uuid()) @db.Uuid
+  role  UserRole
+  name  String
+  email String   @unique
 
-  campaigns  Campaign[] @relation("OrganizerCampaigns")
-  donations  Donation[]
+  campaigns Campaign[] @relation("OrganizerCampaigns")
+  donations Donation[]
 }
 
+// 2. Organization
 model Organization {
-  id         String     @id @default(uuid()) @db.Uuid
-  name       String
-  cause      String
-  location   String
-  verified   Boolean    @default(false)
-  trustScore Int        @default(0)
+  id                  String    @id @default(uuid()) @db.Uuid
+  name                String
+  cause               String
+  location            String
+  payoutEmail         String?
+  verified            Boolean   @default(false)
+  trustScore          Int       @default(0)
+  trustScoreBreakdown Json?
+  trustScoreUpdatedAt DateTime? @db.Timestamptz(3)
 
   campaigns Campaign[]
 }
 
+// 3. Campaign
 model Campaign {
-  id                  String         @id @default(uuid()) @db.Uuid
-  organizationId      String         @db.Uuid
-  organizerId         String?        @db.Uuid
-  title               String
-  goalAmountCents     Int
-  currency            String         @default("USD")
-  status              CampaignStatus @default(draft)
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @db.Uuid
+  organizerId     String?        @db.Uuid
+  title           String
+  goalAmountCents Int
+  currency        String         @default("USD")
+  status          CampaignStatus @default(draft)
 
   organization Organization @relation(fields: [organizationId], references: [id])
   organizer    User?        @relation("OrganizerCampaigns", fields: [organizerId], references: [id])
@@ -86,18 +96,21 @@ model Campaign {
   donations    Donation[]
 }
 
+// 4. Milestone
 model Milestone {
   id                String          @id @default(uuid()) @db.Uuid
   campaignId        String          @db.Uuid
   title             String
   budgetAmountCents Int
   status            MilestoneStatus @default(open)
+  dueDate           DateTime?       @db.Timestamptz(3)
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   evidence Evidence[]
   payouts  Payout[]
 }
 
+// 5. Donation
 model Donation {
   id              String         @id @default(uuid()) @db.Uuid
   campaignId      String         @db.Uuid
@@ -106,11 +119,13 @@ model Donation {
   paypalOrderId   String?        @unique
   paypalCaptureId String?        @unique
   status          DonationStatus @default(pending)
+  completedAt DateTime? @db.Timestamptz(3)
 
   campaign Campaign @relation(fields: [campaignId], references: [id])
   donor    User     @relation(fields: [donorId], references: [id])
 }
 
+// 6. Evidence
 model Evidence {
   id               String           @id @default(uuid()) @db.Uuid
   milestoneId      String           @db.Uuid
@@ -118,21 +133,23 @@ model Evidence {
   extractedFields  Json
   aiFindings       Json
   reviewerDecision ReviewerDecision @default(pending)
-
-  milestone Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  submittedAt      DateTime         @default(now()) @db.Timestamptz(3)
+  milestone        Milestone        @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
 }
 
+// 7. Payout
 model Payout {
   id            String       @id @default(uuid()) @db.Uuid
   milestoneId   String       @db.Uuid
   amountCents   Int
-  senderBatchId String?
+  senderBatchId String?      @unique
   paypalBatchId String?      @unique
   status        PayoutStatus @default(pending)
 
   milestone Milestone @relation(fields: [milestoneId], references: [id])
 }
 
+// 8. Ledger Event
 model LedgerEvent {
   id        String   @id @default(uuid()) @db.Uuid
   type      String
@@ -143,4 +160,17 @@ model LedgerEvent {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([entityId, createdAt])
+}
+
+// PayPal webhook events — prevents duplicate processing
+model WebhookEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  paypalEventId String   @unique
+  eventType     String
+  resourceId    String?
+  payload       Json
+  receivedAt    DateTime @default(now()) @db.Timestamptz(3)
+  processedAt   DateTime?
+
+  @@index([eventType, receivedAt])
 }
