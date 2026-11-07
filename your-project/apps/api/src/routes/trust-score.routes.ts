@@ -11,6 +11,7 @@ import { prisma } from "../lib/prisma";
 import {
   recalculateOrganizationTrustScore,
 } from "../services/trust-score.service";
+import { explainTrustScore } from "../services/ai.service";
 
 const router = Router();
 
@@ -48,11 +49,20 @@ router.get("/:organizationId/trust-score", async (req, res) => {
       });
     }
 
+    let explanation = undefined;
+    if (organization.trustScoreBreakdown && req.query.explain === "true") {
+      const expRes = await explainTrustScore(organization.trustScoreBreakdown as any);
+      if (expRes.ok) {
+        explanation = expRes.data;
+      }
+    }
+
     return res.status(200).json({
       organizationId: organization.id,
       organizationName: organization.name,
       trustScore: organization.trustScore,
       breakdown: organization.trustScoreBreakdown,
+      ...(explanation ? { explanation } : {}),
       updatedAt: organization.trustScoreUpdatedAt,
     });
   } catch (error) {
@@ -60,6 +70,59 @@ router.get("/:organizationId/trust-score", async (req, res) => {
 
     return res.status(500).json({
       error: "Failed to fetch trust score",
+    });
+  }
+});
+
+// ==========================================
+// GET /organizations/:id/trust-score/explain
+// AI-assisted trust score explanation
+// ==========================================
+
+router.get("/:organizationId/trust-score/explain", async (req, res) => {
+  const organizationId = req.params.organizationId;
+
+  if (typeof organizationId !== "string") {
+    return res.status(400).json({
+      error: "Invalid organization ID",
+    });
+  }
+
+  try {
+    const organization = await prisma.organization.findUnique({
+      where: {
+        id: organizationId,
+      },
+      select: {
+        id: true,
+        name: true,
+        trustScore: true,
+        trustScoreBreakdown: true,
+      },
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        error: "Organization not found",
+      });
+    }
+
+    if (!organization.trustScoreBreakdown) {
+      return res.status(404).json({
+        error: "No trust score breakdown available for this organization",
+      });
+    }
+
+    const explanation = await explainTrustScore(
+      organization.trustScoreBreakdown as any
+    );
+
+    return res.status(200).json(explanation);
+  } catch (error) {
+    console.error("Explain trust score error:", error);
+
+    return res.status(500).json({
+      error: "Failed to explain trust score",
     });
   }
 });

@@ -2,7 +2,7 @@ import { GeminiProvider } from "./providers/gemini";
 import type { ModelProvider } from "./providers/types";
 
 export const DEFAULT_PROVIDER = "gemini";
-export const DEFAULT_MODEL = "gemini-3.8-flash";
+export const DEFAULT_MODEL = "gemini-2.5-flash";
 
 // Reads AI_PROVIDER, AI_MODEL and AI_API_KEY from the environment. The caller
 // (API server or eval script) is responsible for loading .env.

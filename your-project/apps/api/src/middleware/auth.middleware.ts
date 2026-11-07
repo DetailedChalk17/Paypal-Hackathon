@@ -8,9 +8,13 @@ const AUTH_COOKIE_NAME = "impactledger_token";
 
 // Checks whether the request has a valid login session
 export const requireAuth: RequestHandler = async (req, res, next) => {
-  const token: unknown = req.cookies?.[AUTH_COOKIE_NAME];
+  const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+  const bearerToken = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice(7).trim()
+    : undefined;
+  const token = cookieToken || bearerToken;
 
-  if (typeof token !== "string") {
+  if (typeof token !== "string" || !token) {
     res.status(401).json({
       error: "Authentication required. Please log in.",
     });

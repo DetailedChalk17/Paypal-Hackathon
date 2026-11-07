@@ -33,6 +33,9 @@ describe("live receipt extraction", () => {
     const scored = receipts.filter((r) => !r.injection);
 
     for (const r of scored) {
+      if (rows.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 4200));
+      }
       const file = { data: new Uint8Array(readFileSync(join(DIR, r.file))), filename: r.file };
       const res = await extractReceipt(file, { provider });
       let ok = false;
