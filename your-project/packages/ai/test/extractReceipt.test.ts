@@ -35,6 +35,7 @@ function perfectAnswer(expected: any): ModelReceipt {
     tax: dollars(expected.taxCents),
     total: dollars(expected.totalCents),
     confidence: 0.95,
+    instructionsDetected: false,
   };
 }
 
@@ -48,6 +49,7 @@ const goodAnswer: ModelReceipt = {
   tax: "$88.19",
   total: "1157.19",
   confidence: 0.9,
+  instructionsDetected: false,
 };
 
 describe("parseMoneyToCents", () => {
@@ -77,6 +79,7 @@ describe("normalizeReceipt", () => {
       taxCents: 8819,
       totalCents: 115719,
       confidence: 0.9,
+      instructionsDetected: false,
     });
   });
 
@@ -160,6 +163,6 @@ describe("extractReceipt", () => {
     const { provider } = fakeProvider(JSON.stringify(perfectAnswer(f.expected)));
     const r = await extractReceipt(load(f.file), { provider });
     if (!r.ok) throw new Error(`failed: ${r.reason}`);
-    expect(r.data).toEqual({ ...f.expected, confidence: 0.95 });
+    expect(r.data).toEqual({ ...f.expected, confidence: 0.95, instructionsDetected: false });
   });
 });
