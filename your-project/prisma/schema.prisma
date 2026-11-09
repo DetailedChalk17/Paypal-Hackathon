@@ -1,3 +1,4 @@
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -52,6 +53,7 @@ enum PayoutStatus {
   processing
   paid
   failed
+  reconciliation_required
 }
 
 // 1. User
@@ -107,7 +109,7 @@ model Milestone {
 
   campaign Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   evidence Evidence[]
-  payouts  Payout[]
+  payout   Payout?
 }
 
 // 5. Donation
@@ -134,19 +136,28 @@ model Evidence {
   aiFindings       Json
   reviewerDecision ReviewerDecision @default(pending)
   submittedAt      DateTime         @default(now()) @db.Timestamptz(3)
-  milestone        Milestone        @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
 }
 
 // 7. Payout
 model Payout {
-  id            String       @id @default(uuid()) @db.Uuid
-  milestoneId   String       @db.Uuid
-  amountCents   Int
-  senderBatchId String?      @unique
-  paypalBatchId String?      @unique
-  status        PayoutStatus @default(pending)
+  id                         String       @id @default(uuid()) @db.Uuid
+  milestoneId                String       @unique @db.Uuid
+  amountCents                Int
+  senderBatchId              String?      @unique
+  paypalBatchId              String?      @unique
+  status                     PayoutStatus @default(pending)
+
+  // Tracks when the current submission attempt began.
+  submissionAttemptStartedAt DateTime?    @db.Timestamptz(3)
+
+  // Tracks when the payout provider confirmed submission acceptance.
+  submittedAt                DateTime?    @db.Timestamptz(3)
 
   milestone Milestone @relation(fields: [milestoneId], references: [id])
+
+  @@index([status, submissionAttemptStartedAt])
 }
 
 // 8. Ledger Event

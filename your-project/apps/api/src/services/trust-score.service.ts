@@ -193,7 +193,9 @@ export async function recalculateOrganizationTrustScore(
                   submittedAt: true,
                 },
               },
-              payouts: {
+
+              // One milestone now has at most one payout.
+              payout: {
                 select: {
                   id: true,
                 },
@@ -215,9 +217,10 @@ export async function recalculateOrganizationTrustScore(
     )
   );
 
+  // Convert the optional single payout into an ID array.
   const payoutIds = organization.campaigns.flatMap((campaign) =>
     campaign.milestones.flatMap((milestone) =>
-      milestone.payouts.map((payout) => payout.id)
+      milestone.payout ? [milestone.payout.id] : []
     )
   );
 
@@ -259,14 +262,23 @@ export async function recalculateOrganizationTrustScore(
         status: milestone.status,
         dueDate: milestone.dueDate,
         budgetAmountCents: milestone.budgetAmountCents,
+
         evidence: milestone.evidence.map((evidence) => ({
           ...evidence,
           ledgerApproved: approvedEvidenceIds.has(evidence.id),
         })),
-        payouts: milestone.payouts.map((payout) => ({
-          id: payout.id,
-          ledgerSucceeded: successfulPayoutIds.has(payout.id),
-        })),
+
+        // Preserve the array expected by calculateTrustScore.
+        payouts: milestone.payout
+          ? [
+              {
+                id: milestone.payout.id,
+                ledgerSucceeded: successfulPayoutIds.has(
+                  milestone.payout.id
+                ),
+              },
+            ]
+          : [],
       })),
     })
   );

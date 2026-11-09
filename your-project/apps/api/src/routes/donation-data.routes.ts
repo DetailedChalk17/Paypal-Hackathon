@@ -20,11 +20,11 @@ type MilestoneForAllocation = {
     reviewerDecision: string;
     submittedAt: Date;
   }[];
-  payouts: {
+  payout: {
     id: string;
     amountCents: number;
     status: string;
-  }[];
+  } | null;
 };
 
 // ==========================================
@@ -38,7 +38,6 @@ function getMilestoneAllocations(
   donationStatus: string
 ) {
   const funded = donationStatus === "completed";
-
   const refunded = donationStatus === "refunded";
 
   const totalMilestoneBudget = milestones.reduce(
@@ -102,11 +101,16 @@ function getMilestoneAllocations(
         submittedAt: evidence.submittedAt,
       })),
 
-      payouts: milestone.payouts.map((payout) => ({
-        id: payout.id,
-        amountCents: payout.amountCents,
-        status: payout.status,
-      })),
+      // Preserve the existing API response as an array.
+      payouts: milestone.payout
+        ? [
+            {
+              id: milestone.payout.id,
+              amountCents: milestone.payout.amountCents,
+              status: milestone.payout.status,
+            },
+          ]
+        : [],
     };
   });
 
@@ -197,7 +201,8 @@ async function findDonationDetails(donationId: string) {
                 },
               },
 
-              payouts: {
+              // One milestone has at most one payout.
+              payout: {
                 select: {
                   id: true,
                   amountCents: true,
@@ -567,8 +572,10 @@ router.get(
           });
         }
 
-        // Payout nodes.
-        for (const payout of milestone.payouts) {
+        // A milestone now has zero or one payout.
+        if (milestone.payout) {
+          const payout = milestone.payout;
+
           const payoutNodeId =
             `payout:${payout.id}`;
 
