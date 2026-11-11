@@ -12,6 +12,7 @@ import { verifyChain } from "../src/services/ledger.service";
 import {
   createPayPalWebhookRouter,
 } from "../src/routes/paypal-webhook.routes";
+import { reserveRefundRequest } from "../src/services/refund.service";
 
 let server: Server | undefined;
 let baseUrl = "";
@@ -585,4 +586,554 @@ test("P5 PayPal webhook HTTP route integration", async (t) => {
       `PASS: Ledger valid across ${result.checkedEvents} events.`
     );
   });
+});
+
+// ==========================================
+// P6: REFUND WEBHOOK HTTP INTEGRATION
+// ==========================================
+
+test("P6 PayPal refund webhook HTTP integration", async () => {
+  const suffix = randomUUID();
+
+  const donor = await prisma.user.create({
+    data: {
+      role: "donor",
+      name: `Refund Webhook Donor ${suffix}`,
+      email: `refund-webhook-${suffix}@example.test`,
+    },
+  });
+
+  const organization = await prisma.organization.create({
+    data: {
+      name: `Refund Webhook Organization ${suffix}`,
+      cause: "Refund webhook testing",
+      location: "Local test database",
+    },
+  });
+
+  const campaign = await prisma.campaign.create({
+    data: {
+      organizationId: organization.id,
+      title: `Refund Webhook Campaign ${suffix}`,
+      goalAmountCents: 100000,
+      currency: "USD",
+      status: "active",
+    },
+  });
+
+  const captureId = `REFUND-WEBHOOK-CAPTURE-${suffix}`;
+
+  const donation = await prisma.donation.create({
+    data: {
+      campaignId: campaign.id,
+      donorId: donor.id,
+      amountCents: 10000,
+      paypalOrderId: `REFUND-WEBHOOK-ORDER-${suffix}`,
+      paypalCaptureId: captureId,
+      status: "completed",
+      completedAt: new Date(),
+    },
+  });
+
+  // Reserve a $25 partial refund against the $100 donation.
+  const reservation = await reserveRefundRequest({
+    donationId: donation.id,
+    idempotencyKey: `refund-webhook-${suffix}`,
+    amountCents: 2500,
+    noteToPayer: "HTTP integration test",
+  });
+
+
+
+  if (!reservation.ok) {
+    throw new Error(
+      `Refund reservation failed: ${reservation.error}`
+    );
+  }
+
+  const refundId = reservation.refund.id;
+  const paypalRefundId = `PAYPAL-REFUND-${suffix}`;
+  const eventId = `WH-REFUND-${suffix}`;
+
+  const refundEvent = {
+    id: eventId,
+    event_type: "PAYMENT.CAPTURE.REFUNDED",
+    resource: {
+      id: paypalRefundId,
+      status: "COMPLETED",
+      custom_id: refundId,
+      amount: {
+        value: "25.00",
+        currency_code: "USD",
+      },
+      supplementary_data: {
+        related_ids: {
+          capture_id: captureId,
+        },
+      },
+    },
+  };
+
+  // ------------------------------------------
+  // TEST 1: Refund webhook through HTTP route
+  // ------------------------------------------
+
+  const response = await sendWebhook(refundEvent);
+
+  const body = await response.json() as {
+    message?: string;
+    eventId?: string;
+    error?: string;
+  };
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  assert.equal(
+    body.message,
+    "Webhook processed successfully"
+  );
+
+  assert.equal(body.eventId, eventId);
+
+  const [
+    refund,
+    webhookEvent,
+    completionEvents,
+    donationAfterRefund,
+  ] = await Promise.all([
+    prisma.refund.findUnique({
+      where: {
+        id: refundId,
+      },
+    }),
+
+    prisma.webhookEvent.findUnique({
+      where: {
+        paypalEventId: eventId,
+      },
+    }),
+
+    prisma.ledgerEvent.count({
+      where: {
+        entityId: refundId,
+        type: "DONATION_REFUND_COMPLETED",
+      },
+    }),
+
+    prisma.donation.findUnique({
+      where: {
+        id: donation.id,
+      },
+    }),
+  ]);
+
+  assert.equal(refund?.status, "completed");
+  assert.equal(refund?.paypalRefundId, paypalRefundId);
+  assert.ok(refund?.completedAt);
+
+  assert.ok(webhookEvent?.processedAt);
+
+  assert.equal(completionEvents, 1);
+
+  // A partial refund must not mark the entire donation refunded.
+  assert.equal(donationAfterRefund?.status, "completed");
+
+  console.log("PASS: Refund webhook completed the reserved Refund.");
+  console.log("PASS: PayPal refund ID was correlated correctly.");
+  console.log("PASS: Completion ledger event recorded.");
+  console.log("PASS: Partial refund preserved Donation status.");
+
+  // ------------------------------------------
+  // TEST 2: Duplicate refund webhook delivery
+  // ------------------------------------------
+
+  const duplicateResponse = await sendWebhook(refundEvent);
+
+  const duplicateBody = await duplicateResponse.json() as {
+    message?: string;
+    eventId?: string;
+  };
+
+  assert.equal(duplicateResponse.status, 200);
+
+  assert.equal(
+    duplicateBody.message,
+    "Duplicate webhook ignored"
+  );
+
+  assert.equal(duplicateBody.eventId, eventId);
+
+  const [eventCount, eventsAfterDuplicate] = await Promise.all([
+    prisma.webhookEvent.count({
+      where: {
+        paypalEventId: eventId,
+      },
+    }),
+
+    prisma.ledgerEvent.count({
+      where: {
+        entityId: refundId,
+        type: "DONATION_REFUND_COMPLETED",
+      },
+    }),
+  ]);
+
+  assert.equal(eventCount, 1);
+  assert.equal(eventsAfterDuplicate, 1);
+
+  console.log("PASS: Duplicate refund webhook ignored.");
+  console.log("PASS: No duplicate completion ledger event.");
+});
+
+// ==========================================
+// P6: CAPTURE DENIAL HTTP INTEGRATION
+// ==========================================
+
+test("P6 PayPal capture denied HTTP integration", async () => {
+  const suffix = randomUUID();
+
+  const donor = await prisma.user.create({
+    data: {
+      role: "donor",
+      name: `Capture Denial Donor ${suffix}`,
+      email: `capture-denial-${suffix}@example.test`,
+    },
+  });
+
+  const organization = await prisma.organization.create({
+    data: {
+      name: `Capture Denial Organization ${suffix}`,
+      cause: "Capture denial testing",
+      location: "Local test database",
+    },
+  });
+
+  const campaign = await prisma.campaign.create({
+    data: {
+      organizationId: organization.id,
+      title: `Capture Denial Campaign ${suffix}`,
+      goalAmountCents: 100000,
+      currency: "USD",
+      status: "active",
+    },
+  });
+
+  // ------------------------------------------
+  // TEST 1: Pending donation becomes failed
+  // ------------------------------------------
+
+  const orderId = `DENIED-ORDER-${suffix}`;
+  const captureId = `DENIED-CAPTURE-${suffix}`;
+  const eventId = `WH-DENIED-${suffix}`;
+
+  const pendingDonation = await prisma.donation.create({
+    data: {
+      campaignId: campaign.id,
+      donorId: donor.id,
+      amountCents: 10000,
+      paypalOrderId: orderId,
+      paypalCaptureId: null,
+      status: "pending",
+    },
+  });
+
+  const deniedEvent = {
+    id: eventId,
+    event_type: "PAYMENT.CAPTURE.DENIED",
+    resource: {
+      id: captureId,
+      status: "DECLINED",
+      amount: {
+        value: "100.00",
+        currency_code: "USD",
+      },
+      supplementary_data: {
+        related_ids: {
+          order_id: orderId,
+        },
+      },
+    },
+  };
+
+  const response = await sendWebhook(deniedEvent);
+
+  const body = await response.json() as {
+    message?: string;
+    eventId?: string;
+    error?: string;
+  };
+
+  assert.equal(
+    response.status,
+    200,
+    JSON.stringify(body)
+  );
+
+  assert.equal(
+    body.message,
+    "Webhook processed successfully"
+  );
+
+  assert.equal(body.eventId, eventId);
+
+  const [failedDonation, webhookEvent, denialEvents] =
+    await Promise.all([
+      prisma.donation.findUnique({
+        where: { id: pendingDonation.id },
+      }),
+
+      prisma.webhookEvent.findUnique({
+        where: { paypalEventId: eventId },
+      }),
+
+      prisma.ledgerEvent.count({
+        where: {
+          entityId: pendingDonation.id,
+          type: "DONATION_CAPTURE_DENIED",
+        },
+      }),
+    ]);
+
+  assert.equal(failedDonation?.status, "failed");
+  assert.equal(failedDonation?.paypalCaptureId, captureId);
+  assert.ok(webhookEvent?.processedAt);
+  assert.equal(denialEvents, 1);
+
+  console.log("PASS: Pending donation changed to failed.");
+  console.log("PASS: Denied capture ID was saved.");
+  console.log("PASS: Capture denial ledger event recorded.");
+
+  // ------------------------------------------
+  // TEST 2: Duplicate denial delivery
+  // ------------------------------------------
+
+  const duplicateResponse = await sendWebhook(deniedEvent);
+
+  const duplicateBody = await duplicateResponse.json() as {
+    message?: string;
+    eventId?: string;
+  };
+
+  assert.equal(duplicateResponse.status, 200);
+  assert.equal(
+    duplicateBody.message,
+    "Duplicate webhook ignored"
+  );
+  assert.equal(duplicateBody.eventId, eventId);
+
+  const eventsAfterDuplicate = await prisma.ledgerEvent.count({
+    where: {
+      entityId: pendingDonation.id,
+      type: "DONATION_CAPTURE_DENIED",
+    },
+  });
+
+  assert.equal(eventsAfterDuplicate, 1);
+
+  console.log("PASS: Duplicate denial webhook ignored.");
+  console.log("PASS: No duplicate denial ledger event.");
+
+  // ------------------------------------------
+  // TEST 3: Late denial must not downgrade
+  // a successfully completed donation.
+  // ------------------------------------------
+
+  const completedOrderId = `COMPLETED-ORDER-${suffix}`;
+  const completedCaptureId = `COMPLETED-CAPTURE-${suffix}`;
+  const lateEventId = `WH-LATE-DENIED-${suffix}`;
+
+  const completedDonation = await prisma.donation.create({
+    data: {
+      campaignId: campaign.id,
+      donorId: donor.id,
+      amountCents: 10000,
+      paypalOrderId: completedOrderId,
+      paypalCaptureId: completedCaptureId,
+      status: "completed",
+      completedAt: new Date(),
+    },
+  });
+
+  const lateDeniedEvent = {
+    id: lateEventId,
+    event_type: "PAYMENT.CAPTURE.DENIED",
+    resource: {
+      id: completedCaptureId,
+      status: "DECLINED",
+      amount: {
+        value: "100.00",
+        currency_code: "USD",
+      },
+      supplementary_data: {
+        related_ids: {
+          order_id: completedOrderId,
+        },
+      },
+    },
+  };
+
+  const lateResponse = await sendWebhook(lateDeniedEvent);
+
+  const lateBody = await lateResponse.json() as {
+    message?: string;
+    eventId?: string;
+    error?: string;
+  };
+
+  assert.equal(
+    lateResponse.status,
+    200,
+    JSON.stringify(lateBody)
+  );
+
+  assert.equal(
+    lateBody.message,
+    "Webhook processed successfully"
+  );
+
+  const [preservedDonation, lateDenialEvents, lateWebhookEvent] =
+    await Promise.all([
+      prisma.donation.findUnique({
+        where: { id: completedDonation.id },
+      }),
+
+      prisma.ledgerEvent.count({
+        where: {
+          entityId: completedDonation.id,
+          type: "DONATION_CAPTURE_DENIED",
+        },
+      }),
+
+      prisma.webhookEvent.findUnique({
+        where: { paypalEventId: lateEventId },
+      }),
+    ]);
+
+  assert.equal(preservedDonation?.status, "completed");
+  assert.equal(lateDenialEvents, 0);
+  assert.ok(lateWebhookEvent?.processedAt);
+
+  console.log("PASS: Late denial did not downgrade completed donation.");
+  console.log("PASS: No false denial ledger event recorded.");
+});
+// ==========================================
+// P7: WEBHOOK FAILURE-PATH TESTS
+// ==========================================
+
+test("P7 unmatched payout requires reconciliation", async () => {
+  const eventId = `WH-UNMATCHED-${randomUUID()}`;
+  const unknownBatchId = `UNKNOWN-BATCH-${randomUUID()}`;
+
+  const response = await sendWebhook({
+    id: eventId,
+    event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS",
+    resource: {
+      batch_header: {
+        payout_batch_id: unknownBatchId,
+      },
+    },
+  });
+
+  const body = await response.json() as {
+    message?: string;
+    eventId?: string;
+    status?: string;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.status, "reconciliation_required");
+  assert.equal(body.eventId, eventId);
+
+  const storedEvent = await prisma.webhookEvent.findUnique({
+    where: { paypalEventId: eventId },
+  });
+
+  assert.ok(storedEvent);
+  assert.equal(
+    storedEvent.processingStatus,
+    "reconciliation_required"
+  );
+  assert.ok(storedEvent.lastError?.includes(unknownBatchId));
+
+  console.log("PASS: Unmatched payout requires reconciliation.");
+  console.log("PASS: Webhook receipt preserved without payout association.");
+});
+
+
+test("P7 transient processing failure becomes retryable", async () => {
+  const eventId = `WH-RETRYABLE-${randomUUID()}`;
+
+  const response = await sendWebhook({
+    id: eventId,
+    event_type: "PAYMENT.CAPTURE.DENIED",
+    resource: {
+      id: `UNKNOWN-CAPTURE-${randomUUID()}`,
+      status: "DECLINED",
+      amount: {
+        value: "10.00",
+        currency_code: "USD",
+      },
+      supplementary_data: {
+        related_ids: {
+          order_id: `UNKNOWN-ORDER-${randomUUID()}`,
+        },
+      },
+    },
+  });
+
+  const body = await response.json() as {
+    error?: string;
+  };
+
+  assert.equal(response.status, 500);
+  assert.equal(body.error, "Webhook processing failed");
+
+  const storedEvent = await prisma.webhookEvent.findUnique({
+    where: { paypalEventId: eventId },
+  });
+
+  assert.ok(storedEvent);
+  assert.equal(storedEvent.processingStatus, "retryable");
+  assert.ok(storedEvent.lastError);
+
+  console.log("PASS: Transient processing failure returned HTTP 500.");
+  console.log("PASS: Webhook receipt marked retryable.");
+});
+
+
+test("P7 event already processing is not acknowledged as complete", async () => {
+  const eventId = `WH-PROCESSING-${randomUUID()}`;
+
+  await prisma.webhookEvent.create({
+    data: {
+      paypalEventId: eventId,
+      eventType: "PAYMENT.PAYOUTSBATCH.SUCCESS",
+      resourceId: `RESOURCE-${randomUUID()}`,
+      payload: {
+        id: eventId,
+        event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS",
+        resource: {},
+      },
+      processingStatus: "processing",
+    },
+  });
+
+  const response = await sendWebhook({
+    id: eventId,
+    event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS",
+    resource: {},
+  });
+
+  const storedEvent = await prisma.webhookEvent.findUnique({
+    where: { paypalEventId: eventId },
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(storedEvent?.processingStatus, "processing");
+
+  console.log("PASS: In-progress webhook delivery returns HTTP 503.");
 });

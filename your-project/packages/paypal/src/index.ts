@@ -11,7 +11,17 @@ export type {
   PayPalErrorDetail,
 } from "./client.js";
 
-export { createOrder, captureOrder } from "./orders.js";
+export {
+  createOrder,
+  captureOrder,
+  refundCapture,
+} from "./orders.js";
+
 export { verifyWebhookSignature } from "./webhooks.js";
-export { createPayout, getPayoutStatus } from "./payouts.js";
+
+export {
+  createPayout,
+  getPayoutStatus,
+} from "./payouts.js";
+
 export type { CreatePayoutInput } from "./payouts.js";

@@ -7,6 +7,7 @@ import {
 } from "../middleware/auth.middleware";
 
 import { prisma } from "../lib/prisma";
+import { getNetDonationAmountsCents } from "../services/refund.service";
 
 import {
   CreateCampaignInputSchema,
@@ -124,13 +125,16 @@ router.get("/:id", async (req, res) => {
         organization: true,
         milestones: true,
         donations: {
-          where: {
-            status: "completed",
-          },
-          select: {
-            amountCents: true,
-          },
-        },
+  where: {
+    status: "completed",
+  },
+  select: {
+    id: true,
+    amountCents: true,
+    status: true,
+    paypalCaptureId: true,
+  },
+},
       },
     });
 
@@ -140,11 +144,22 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    const raisedAmountCents = campaign.donations.reduce(
-      (total, donation) => total + donation.amountCents,
-      0
-    );
+   const netAmounts = await getNetDonationAmountsCents(
+  prisma,
+  campaign.donations.map((donation) => ({
+    id: donation.id,
+    amountCents: donation.amountCents,
+    status: donation.status,
+    paypalCaptureId: donation.paypalCaptureId,
+    currencyCode: campaign.currency,
+  }))
+);
 
+const raisedAmountCents = campaign.donations.reduce(
+  (total, donation) =>
+    total + (netAmounts.get(donation.id) ?? 0),
+  0
+);
     return res.status(200).json({
       ...campaign,
       raisedAmountCents,

@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { appendEventInTransaction } from "./ledger.service";
 
 // ==========================================
-// TYPES AND HELPERS
+// TYPES AND ERRORS
 // ==========================================
 
 type PayoutWebhookResult = {
@@ -19,6 +19,17 @@ type PayoutWebhookResult = {
     | "item_failed"
     | "item_requires_reconciliation";
 };
+
+export class PayoutReconciliationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PayoutReconciliationError";
+  }
+}
+
+// ==========================================
+// HELPERS
+// ==========================================
 
 function asObject(
   value: unknown
@@ -111,7 +122,7 @@ export async function processPayoutWebhookEvent(
     );
   }
 
-    const senderBatchId = getSenderBatchId(resource);
+  const senderBatchId = getSenderBatchId(resource);
 
   const include = {
     milestone: {
@@ -152,7 +163,7 @@ export async function processPayoutWebhookEvent(
   const payout = payoutByBatchId ?? payoutBySenderBatchId;
 
   if (!payout) {
-    throw new Error(
+    throw new PayoutReconciliationError(
       senderBatchId
         ? `No payout found for PayPal batch ${batchId} or sender batch ${senderBatchId}`
         : `No payout found for PayPal batch ${batchId}`
@@ -177,6 +188,7 @@ export async function processPayoutWebhookEvent(
       "Payout record disappeared during processing"
     );
   }
+
   // A webhook may arrive before releasePayout() persists
   // the PayPal API response. Associate the provider batch ID
   // using the already-persisted sender batch ID.
