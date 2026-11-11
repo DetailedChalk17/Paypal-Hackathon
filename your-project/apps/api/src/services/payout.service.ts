@@ -41,7 +41,6 @@ function generateSenderBatchId(milestoneId: string): string {
 // MOCK PAYPAL PAYOUT
 // ==========================================
 
-// Temporary adapter until P4 validates the real PayPal
 // Payouts API. This simulates submission, NOT actual payment.
 export async function sendMockPayout(input: {
   milestoneId: string;
@@ -55,6 +54,74 @@ export async function sendMockPayout(input: {
     message: "Mock payout submitted successfully",
   };
 }
+
+
+// ==========================================
+// REAL PAYPAL PAYOUT ADAPTER
+// ==========================================
+
+type PayoutSenderInput = {
+  milestoneId: string;
+  amountCents: number;
+  senderBatchId: string;
+  recipientEmail: string;
+};
+
+// Generate a stable item ID for each milestone.
+// The ID must remain unchanged across retries.
+function generateSenderItemId(milestoneId: string): string {
+  const hash = createHash("sha256")
+    .update(milestoneId)
+    .digest("hex")
+    .slice(0, 28);
+
+  return `i_${hash}`;
+}
+
+
+export async function sendPayPalPayout(
+  input: PayoutSenderInput
+): Promise<PayoutSubmissionResult> {
+  // Load the PayPal package before entering the try/catch.
+  // This keeps its error classes accessible inside catch.
+  const paypal = await import("@your-project/paypal");
+
+  try {
+    const result = await paypal.createPayout({
+      receiverEmail: input.recipientEmail,
+      amountCents: input.amountCents,
+      senderBatchId: input.senderBatchId,
+      senderItemId: generateSenderItemId(input.milestoneId),
+    });
+
+    return {
+      success: true,
+      senderBatchId: result.senderBatchId,
+      paypalBatchId: result.payoutBatchId,
+      message: `PayPal payout batch submitted with status: ${result.status}`,
+    };
+  } catch (error: unknown) {
+    const definitivePreSubmissionFailure =
+      error instanceof paypal.PayPalConfigurationError ||
+      error instanceof paypal.PayPalAuthenticationError ||
+      (
+        error instanceof paypal.PayPalTransportError &&
+        error.stage === "authentication"
+      );
+
+    return {
+      success: false,
+      senderBatchId: input.senderBatchId,
+      message: error instanceof Error
+        ? error.message
+        : "Unknown PayPal payout error",
+      failureKind: definitivePreSubmissionFailure
+        ? "definitive"
+        : "unknown",
+    };
+  }
+}
+
 
 // ==========================================
 // OUTCOME HELPERS
@@ -275,7 +342,7 @@ export async function markStalePayoutsForReconciliation(
 
 export async function releasePayout(
   milestoneId: string,
-  payoutSender: typeof sendMockPayout = sendMockPayout
+  payoutSender: typeof sendPayPalPayout = sendPayPalPayout
 ) {
   // 1. Fetch milestone and recipient organization.
   const milestone = await prisma.milestone.findUnique({
@@ -358,6 +425,11 @@ export async function releasePayout(
   if (milestone.status !== "approved") {
     throw new Error(
       "Milestone must be approved before payout"
+    );
+  }
+  if (milestone.campaign.currency !== "USD") {
+    throw new Error(
+      "PayPal payouts currently support USD only"
     );
   }
 
@@ -639,11 +711,20 @@ export async function releasePayout(
         `${reason}; reconciliation required`
       );
     }
-
     // 12. Record confirmed submission.
-    // Never overwrite a webhook-confirmed paid state.
+    // Persist provider metadata without overwriting a state
+    // already established by a webhook.
+
     const updatedPayout = await prisma.$transaction(
       async (tx) => {
+        // Serialize this update against concurrent webhook updates.
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "Payout"
+          WHERE "id" = ${payout!.id}::uuid
+          FOR UPDATE
+        `;
+
         const current = await tx.payout.findUnique({
           where: { id: payout!.id },
         });
@@ -652,45 +733,43 @@ export async function releasePayout(
           throw new Error("Payout record not found");
         }
 
-        if (current.status !== "paid") {
-          const updated = await tx.payout.updateMany({
-            where: {
-              id: current.id,
-              status: current.status,
-            },
-            data: {
-              status: "processing",
-              submittedAt:
-                current.submittedAt ?? new Date(),
-              ...(result.paypalBatchId
-                ? { paypalBatchId: result.paypalBatchId }
-                : {}),
-            },
-          });
-
-          if (updated.count === 0) {
-            throw new Error(
-              "Payout changed while recording submission"
-            );
-          }
-        } else {
-          // A webhook may have completed the payout while the
-          // sender call was still waiting. Preserve paid status.
-          await tx.payout.updateMany({
-            where: {
-              id: current.id,
-              status: "paid",
-            },
-            data: {
-              submittedAt:
-                current.submittedAt ?? new Date(),
-              ...(result.paypalBatchId
-                ? { paypalBatchId: result.paypalBatchId }
-                : {}),
-            },
-          });
+        // Never associate one local payout with two different
+        // PayPal batch IDs.
+        if (
+          result.paypalBatchId &&
+          current.paypalBatchId &&
+          current.paypalBatchId !== result.paypalBatchId
+        ) {
+          throw new Error(
+            "PayPal response batch ID conflicts with the existing payout batch ID"
+          );
         }
 
+        // Save provider acceptance metadata, but preserve the
+        // current status regardless of whether it is processing,
+        // paid, failed, or reconciliation_required.
+        const updated = await tx.payout.updateMany({
+          where: {
+            id: current.id,
+            status: current.status,
+            paypalBatchId: current.paypalBatchId,
+          },
+          data: {
+            submittedAt:
+              current.submittedAt ?? new Date(),
+            ...(result.paypalBatchId
+              ? { paypalBatchId: result.paypalBatchId }
+              : {}),
+          },
+        });
+
+        if (updated.count === 0) {
+          throw new Error(
+            "Payout changed while recording submission metadata"
+          );
+        }
+
+        // Record the submission event exactly once.
         const existingSubmissionEvent =
           await tx.ledgerEvent.findFirst({
             where: {
@@ -726,6 +805,7 @@ export async function releasePayout(
     );
 
     return updatedPayout;
+
   } catch (error) {
     // Errors after provider acceptance must not be treated as
     // definitive rejection. Preserve paid or accepted states.

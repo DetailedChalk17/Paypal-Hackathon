@@ -1,0 +1,13 @@
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Sensitive local cookie exports
+cookies.txt
+**/cookies.txt
+
+# Local environment secrets
+.env
+.env.*
+!.env.example

@@ -39,6 +39,14 @@ enum DonationStatus {
   failed
   refunded
 }
+enum RefundStatus {
+  processing
+  pending
+  completed
+  failed
+  cancelled
+  reconciliation_required
+}
 
 // Evidence review decision
 enum ReviewerDecision {
@@ -122,9 +130,28 @@ model Donation {
   paypalCaptureId String?        @unique
   status          DonationStatus @default(pending)
   completedAt     DateTime?      @db.Timestamptz(3)
-
+  refunds Refund[]
   campaign Campaign @relation(fields: [campaignId], references: [id])
   donor    User     @relation(fields: [donorId], references: [id])
+}
+// Tracks individual PayPal refunds against a donation.
+model Refund {
+  id             String       @id @default(uuid()) @db.Uuid
+  donationId     String       @db.Uuid
+  idempotencyKey String
+  paypalRefundId String?      @unique
+  amountCents    Int
+  status         RefundStatus @default(processing)
+  noteToPayer    String?
+  failureReason  String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  completedAt    DateTime?    @db.Timestamptz(3)
+
+  donation Donation @relation(fields: [donationId], references: [id])
+
+  @@unique([donationId, idempotencyKey])
+  @@index([donationId, status])
 }
 
 // 6. Evidence
@@ -175,13 +202,18 @@ model LedgerEvent {
 
 // PayPal webhook events — prevents duplicate processing
 model WebhookEvent {
-  id            String    @id @default(uuid()) @db.Uuid
-  paypalEventId String    @unique
-  eventType     String
-  resourceId    String?
-  payload       Json
-  receivedAt    DateTime  @default(now()) @db.Timestamptz(3)
-  processedAt   DateTime? @db.Timestamptz(3)
+  id               String    @id @default(uuid()) @db.Uuid
+  paypalEventId    String    @unique
+  eventType        String
+  resourceId       String?
+  payload          Json
+
+  processingStatus String    @default("received")
+  lastError        String?
+
+  receivedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  processedAt      DateTime? @db.Timestamptz(3)
 
   @@index([eventType, receivedAt])
+  @@index([processingStatus, receivedAt])
 }

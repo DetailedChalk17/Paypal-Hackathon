@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
+import { getNetDonationAmountsCents } from "../services/refund.service";
 
 const router = Router();
 
@@ -11,19 +12,22 @@ const router = Router();
 router.get("/summary", async (_req, res) => {
   try {
     const [
-      donationsByDay,
+      donationRows,
       spendByCategory,
-      fundingGaps,
+      fundingGapCampaigns,
       flags,
       trustScores,
     ] = await Promise.all([
 
-      // 1. Successful donations grouped by day.
+      // 1. Fetch successful donations for net daily accounting.
       prisma.$queryRaw<
         Array<{
           date: string;
-          donationCount: bigint;
-          amountCents: bigint;
+          donationId: string;
+          amountCents: number;
+          status: string;
+          paypalCaptureId: string | null;
+          currencyCode: string;
         }>
       >`
         WITH completed_events AS (
@@ -35,13 +39,16 @@ router.get("/summary", async (_req, res) => {
         )
         SELECT
           TO_CHAR(DATE(e."createdAt"), 'YYYY-MM-DD') AS "date",
-          COUNT(*)::BIGINT AS "donationCount",
-          COALESCE(SUM(d."amountCents"), 0)::BIGINT AS "amountCents"
+          d."id" AS "donationId",
+          d."amountCents" AS "amountCents",
+          d."status" AS "status",
+          d."paypalCaptureId" AS "paypalCaptureId",
+          c."currency" AS "currencyCode"
         FROM completed_events e
         JOIN "Donation" d ON d."id" = e."entityId"
+        JOIN "Campaign" c ON c."id" = d."campaignId"
         WHERE d."status" = 'completed'
-        GROUP BY DATE(e."createdAt")
-        ORDER BY DATE(e."createdAt") ASC
+        ORDER BY DATE(e."createdAt"), d."id"
       `,
 
       // 2. Paid spending grouped by organization cause.
@@ -65,54 +72,35 @@ router.get("/summary", async (_req, res) => {
         ORDER BY SUM(p."amountCents") DESC
       `,
 
-      // 3. Remaining funding gaps for active campaigns.
-      prisma.$queryRaw<
-        Array<{
-          campaignId: string;
-          campaignTitle: string;
-          organizationName: string;
-          goalAmountCents: bigint;
-          raisedAmountCents: bigint;
-          fundingGapCents: bigint;
-        }>
-      >`
-        SELECT
-          c."id" AS "campaignId",
-          c."title" AS "campaignTitle",
-          o."name" AS "organizationName",
-          c."goalAmountCents"::BIGINT AS "goalAmountCents",
-          COALESCE(
-            SUM(d."amountCents")
-            FILTER (WHERE d."status" = 'completed'),
-            0
-          )::BIGINT AS "raisedAmountCents",
-          GREATEST(
-            c."goalAmountCents"::BIGINT -
-            COALESCE(
-              SUM(d."amountCents")
-              FILTER (WHERE d."status" = 'completed'),
-              0
-            ),
-            0
-          )::BIGINT AS "fundingGapCents"
-        FROM "Campaign" c
-        JOIN "Organization" o ON o."id" = c."organizationId"
-        LEFT JOIN "Donation" d ON d."campaignId" = c."id"
-        WHERE c."status" = 'active'
-        GROUP BY
-          c."id",
-          c."title",
-          c."goalAmountCents",
-          o."name"
-        HAVING
-          c."goalAmountCents"::BIGINT -
-          COALESCE(
-            SUM(d."amountCents")
-            FILTER (WHERE d."status" = 'completed'),
-            0
-          ) > 0
-        ORDER BY "fundingGapCents" DESC
-      `,
+      // 3. Load active campaigns and their completed donations.
+      // Net amounts are calculated after the batch queries below.
+      prisma.campaign.findMany({
+        where: {
+          status: "active",
+        },
+        select: {
+          id: true,
+          title: true,
+          goalAmountCents: true,
+          currency: true,
+          organization: {
+            select: {
+              name: true,
+            },
+          },
+          donations: {
+            where: {
+              status: "completed",
+            },
+            select: {
+              id: true,
+              amountCents: true,
+              status: true,
+              paypalCaptureId: true,
+            },
+          },
+        },
+      }),
 
       // 4. Dashboard flags.
       prisma.$queryRaw<
@@ -168,6 +156,98 @@ router.get("/summary", async (_req, res) => {
         },
       }),
     ]);
+
+    const netDonationInputs = new Map<
+      string,
+      {
+        id: string;
+        amountCents: number;
+        status: string;
+        paypalCaptureId: string | null;
+        currencyCode: string;
+      }
+    >();
+
+    // Include daily donation rows.
+    for (const row of donationRows) {
+      netDonationInputs.set(row.donationId, {
+        id: row.donationId,
+        amountCents: row.amountCents,
+        status: row.status,
+        paypalCaptureId: row.paypalCaptureId,
+        currencyCode: row.currencyCode,
+      });
+    }
+
+    // Include completed donations belonging to active campaigns.
+    for (const campaign of fundingGapCampaigns) {
+      for (const donation of campaign.donations) {
+        netDonationInputs.set(donation.id, {
+          id: donation.id,
+          amountCents: donation.amountCents,
+          status: donation.status,
+          paypalCaptureId: donation.paypalCaptureId,
+          currencyCode: campaign.currency,
+        });
+      }
+    }
+
+    // Calculate net amounts once for both dashboard sections.
+    const netAmounts = await getNetDonationAmountsCents(
+      prisma,
+      Array.from(netDonationInputs.values())
+    );
+
+    const dailyTotals = new Map<
+      string,
+      { donationCount: number; amountCents: number }
+    >();
+
+    for (const row of donationRows) {
+      const current = dailyTotals.get(row.date) ?? {
+        donationCount: 0,
+        amountCents: 0,
+      };
+
+      current.donationCount += 1;
+      current.amountCents += netAmounts.get(row.donationId) ?? 0;
+
+      dailyTotals.set(row.date, current);
+    }
+
+    const donationsByDay = Array.from(
+      dailyTotals,
+      ([date, totals]) => ({
+        date,
+        donationCount: totals.donationCount,
+        amountCents: totals.amountCents,
+      })
+    );
+
+    const fundingGaps = fundingGapCampaigns
+      .map((campaign) => {
+        const raisedAmountCents = campaign.donations.reduce(
+          (total, donation) =>
+            total + (netAmounts.get(donation.id) ?? 0),
+          0
+        );
+
+        return {
+          campaignId: campaign.id,
+          campaignTitle: campaign.title,
+          organizationName: campaign.organization.name,
+          goalAmountCents: campaign.goalAmountCents,
+          raisedAmountCents,
+          fundingGapCents: Math.max(
+            campaign.goalAmountCents - raisedAmountCents,
+            0
+          ),
+        };
+      })
+      .filter((campaign) => campaign.fundingGapCents > 0)
+      .sort(
+        (a, b) => b.fundingGapCents - a.fundingGapCents
+      );
 
     return res.status(200).json({
       generatedAt: new Date().toISOString(),

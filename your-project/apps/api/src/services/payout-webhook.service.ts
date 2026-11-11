@@ -4,15 +4,32 @@ import { Prisma } from "@prisma/client";
 import { appendEventInTransaction } from "./ledger.service";
 
 // ==========================================
-// TYPES AND HELPERS
+// TYPES AND ERRORS
 // ==========================================
 
 type PayoutWebhookResult = {
   payoutId: string;
   milestoneId: string;
   organizationId?: string;
-  action: "batch_completed" | "item_succeeded";
+  action:
+    | "batch_completed"
+    | "batch_processing"
+    | "batch_denied"
+    | "item_succeeded"
+    | "item_failed"
+    | "item_requires_reconciliation";
 };
+
+export class PayoutReconciliationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PayoutReconciliationError";
+  }
+}
+
+// ==========================================
+// HELPERS
+// ==========================================
 
 function asObject(
   value: unknown
@@ -60,6 +77,34 @@ function getPayoutBatchId(
   );
 }
 
+function getSenderBatchId(
+  resource: Record<string, unknown> | null
+): string | undefined {
+  const batchHeader = asObject(resource?.batch_header);
+  const payoutBatchHeader = asObject(
+    resource?.payout_batch_header
+  );
+
+  const senderBatchHeader = asObject(
+    resource?.sender_batch_header
+  );
+
+  const nestedBatchSenderHeader = asObject(
+    batchHeader?.sender_batch_header
+  );
+
+  const nestedPayoutBatchSenderHeader = asObject(
+    payoutBatchHeader?.sender_batch_header
+  );
+
+  return (
+    getString(resource, "sender_batch_id") ??
+    getString(senderBatchHeader, "sender_batch_id") ??
+    getString(nestedBatchSenderHeader, "sender_batch_id") ??
+    getString(nestedPayoutBatchSenderHeader, "sender_batch_id")
+  );
+}
+
 // ==========================================
 // PROCESS PAYOUT WEBHOOK
 // ==========================================
@@ -77,24 +122,51 @@ export async function processPayoutWebhookEvent(
     );
   }
 
-  const payout = await tx.payout.findUnique({
-    where: { paypalBatchId: batchId },
-    include: {
-      milestone: {
-        include: {
-          campaign: {
-            select: {
-              organizationId: true,
-            },
+  const senderBatchId = getSenderBatchId(resource);
+
+  const include = {
+    milestone: {
+      include: {
+        campaign: {
+          select: {
+            organizationId: true,
           },
         },
       },
     },
+  } satisfies Prisma.PayoutInclude;
+
+  const payoutByBatchId = await tx.payout.findUnique({
+    where: { paypalBatchId: batchId },
+    include,
   });
 
-  if (!payout) {
+  const payoutBySenderBatchId = senderBatchId
+    ? await tx.payout.findUnique({
+        where: { senderBatchId },
+        include,
+      })
+    : null;
+
+  // If the two identifiers resolve to different payouts,
+  // never guess which payout this webhook belongs to.
+  if (
+    payoutByBatchId &&
+    payoutBySenderBatchId &&
+    payoutByBatchId.id !== payoutBySenderBatchId.id
+  ) {
     throw new Error(
-      `No payout found for PayPal batch ${batchId}`
+      "PayPal batch ID and sender batch ID resolve to different payouts"
+    );
+  }
+
+  const payout = payoutByBatchId ?? payoutBySenderBatchId;
+
+  if (!payout) {
+    throw new PayoutReconciliationError(
+      senderBatchId
+        ? `No payout found for PayPal batch ${batchId} or sender batch ${senderBatchId}`
+        : `No payout found for PayPal batch ${batchId}`
     );
   }
 
@@ -117,126 +189,203 @@ export async function processPayoutWebhookEvent(
     );
   }
 
+  // A webhook may arrive before releasePayout() persists
+  // the PayPal API response. Associate the provider batch ID
+  // using the already-persisted sender batch ID.
+  if (
+    currentPayout.paypalBatchId &&
+    currentPayout.paypalBatchId !== batchId
+  ) {
+    throw new Error(
+      "Payout is already associated with a different PayPal batch ID"
+    );
+  }
+
+  if (!currentPayout.paypalBatchId) {
+    const association = await tx.payout.updateMany({
+      where: {
+        id: currentPayout.id,
+        paypalBatchId: null,
+      },
+      data: {
+        paypalBatchId: batchId,
+      },
+    });
+
+    if (association.count === 0) {
+      const latestPayout = await tx.payout.findUnique({
+        where: { id: currentPayout.id },
+        select: { paypalBatchId: true },
+      });
+
+      if (latestPayout?.paypalBatchId !== batchId) {
+        throw new Error(
+          "Could not safely associate PayPal batch ID with payout"
+        );
+      }
+    }
+  }
+
   // ------------------------------------------
-  // PAYOUT BATCH SUCCESS
+  // MAP PAYPAL EVENT TO INTERNAL PAYOUT STATE
   // ------------------------------------------
 
-  if (
-    eventType === "PAYMENT.PAYOUTSBATCH.SUCCESS"
-  ) {
-    // Batch success confirms submission/processing,
-    // but does NOT prove individual funds were delivered.
-    //
-    // An already-paid payout must never be downgraded.
-    if (currentPayout.status !== "paid") {
+  let nextStatus:
+    | "processing"
+    | "paid"
+    | "failed"
+    | "reconciliation_required";
+
+  let ledgerEventType: string;
+  let action: PayoutWebhookResult["action"];
+
+  switch (eventType) {
+    case "PAYMENT.PAYOUTSBATCH.SUCCESS":
+      nextStatus = "processing";
+      ledgerEventType = "PAYOUT_BATCH_COMPLETED";
+      action = "batch_completed";
+      break;
+
+    case "PAYMENT.PAYOUTSBATCH.PROCESSING":
+      nextStatus = "processing";
+      ledgerEventType = "PAYOUT_BATCH_PROCESSING";
+      action = "batch_processing";
+      break;
+
+    case "PAYMENT.PAYOUTSBATCH.DENIED":
+      nextStatus = "reconciliation_required";
+      ledgerEventType = "PAYOUT_BATCH_DENIED";
+      action = "batch_denied";
+      break;
+
+    case "PAYMENT.PAYOUTS-ITEM.SUCCEEDED":
+      nextStatus = "paid";
+      ledgerEventType = "PAYOUT_ITEM_SUCCEEDED";
+      action = "item_succeeded";
+      break;
+
+    case "PAYMENT.PAYOUTS-ITEM.FAILED":
+      nextStatus = "failed";
+      ledgerEventType = "PAYOUT_ITEM_FAILED";
+      action = "item_failed";
+      break;
+
+    case "PAYMENT.PAYOUTS-ITEM.BLOCKED":
+    case "PAYMENT.PAYOUTS-ITEM.HELD":
+    case "PAYMENT.PAYOUTS-ITEM.CANCELED":
+    case "PAYMENT.PAYOUTS-ITEM.REFUNDED":
+    case "PAYMENT.PAYOUTS-ITEM.RETURNED":
+    case "PAYMENT.PAYOUTS-ITEM.UNCLAIMED":
+      nextStatus = "reconciliation_required";
+      ledgerEventType = "PAYOUT_ITEM_REQUIRES_RECONCILIATION";
+      action = "item_requires_reconciliation";
+      break;
+
+    default:
+      throw new Error(
+        `Unsupported payout webhook event: ${eventType}`
+      );
+  }
+
+  // ------------------------------------------
+  // EXTRACT ITEM-LEVEL DETAILS
+  // ------------------------------------------
+
+  const resourceId = getString(resource, "id");
+
+  const payoutItemId =
+    getString(resource, "payout_item_id") ?? resourceId;
+
+  const transactionId = getString(resource, "transaction_id");
+
+  // ------------------------------------------
+  // UPDATE PAYOUT STATUS SAFELY
+  // ------------------------------------------
+
+  // A confirmed payment must never be downgraded.
+  if (currentPayout.status !== "paid") {
+    const isBatchEvent =
+      eventType === "PAYMENT.PAYOUTSBATCH.SUCCESS" ||
+      eventType === "PAYMENT.PAYOUTSBATCH.PROCESSING" ||
+      eventType === "PAYMENT.PAYOUTSBATCH.DENIED";
+
+    const isItemSuccess = action === "item_succeeded";
+
+    const preserveExistingState =
+      currentPayout.status === "reconciliation_required" &&
+      !isItemSuccess;
+
+    const preserveFailureAgainstBatch =
+      currentPayout.status === "failed" &&
+      isBatchEvent;
+
+    if (
+      !preserveExistingState &&
+      !preserveFailureAgainstBatch
+    ) {
       await tx.payout.update({
         where: { id: currentPayout.id },
         data: {
-          status: "processing",
+          status: nextStatus,
           submittedAt:
             currentPayout.submittedAt ?? new Date(),
         },
       });
     }
-
-    const existingBatchEvent =
-      await tx.ledgerEvent.findFirst({
-        where: {
-          entityId: currentPayout.id,
-          type: "PAYOUT_BATCH_COMPLETED",
-        },
-        select: { id: true },
-      });
-
-    if (!existingBatchEvent) {
-      await appendEventInTransaction(
-        tx,
-        "PAYOUT_BATCH_COMPLETED",
-        currentPayout.id,
-        {
-          paypalBatchId: batchId,
-          source: "paypal_webhook",
-        }
-      );
-    }
-
-    return {
-      payoutId: currentPayout.id,
-      milestoneId: currentPayout.milestoneId,
-      action: "batch_completed",
-    };
   }
 
   // ------------------------------------------
-  // INDIVIDUAL PAYOUT ITEM SUCCESS
+  // UPDATE MILESTONE ONLY ON ITEM SUCCESS
   // ------------------------------------------
 
   if (
-    eventType === "PAYMENT.PAYOUTS-ITEM.SUCCEEDED"
+    action === "item_succeeded" &&
+    payout.milestone.status !== "paid"
   ) {
-    const resourceId = getString(resource, "id");
-
-    const payoutItemId =
-      getString(resource, "payout_item_id") ?? resourceId;
-
-    const transactionId =
-      getString(resource, "transaction_id");
-
-    // Individual item success is the confirmation
-    // that completes the payout.
-    if (currentPayout.status !== "paid") {
-      await tx.payout.update({
-        where: { id: currentPayout.id },
-        data: {
-          status: "paid",
-          submittedAt:
-            currentPayout.submittedAt ?? new Date(),
-        },
-      });
-    }
-
-    // Record success exactly once.
-    const existingSuccessEvent =
-      await tx.ledgerEvent.findFirst({
-        where: {
-          entityId: currentPayout.id,
-          type: "PAYOUT_ITEM_SUCCEEDED",
-        },
-        select: { id: true },
-      });
-
-    if (!existingSuccessEvent) {
-      await appendEventInTransaction(
-        tx,
-        "PAYOUT_ITEM_SUCCEEDED",
-        currentPayout.id,
-        {
-          paypalBatchId: batchId,
-          paypalPayoutItemId: payoutItemId ?? null,
-          transactionId: transactionId ?? null,
-          source: "paypal_webhook",
-        }
-      );
-    }
-
-    // Only individual item success completes the milestone.
-    if (payout.milestone.status !== "paid") {
-      await tx.milestone.update({
-        where: { id: currentPayout.milestoneId },
-        data: { status: "paid" },
-      });
-    }
-
-    return {
-      payoutId: currentPayout.id,
-      milestoneId: currentPayout.milestoneId,
-      organizationId:
-        payout.milestone.campaign.organizationId,
-      action: "item_succeeded",
-    };
+    await tx.milestone.update({
+      where: { id: currentPayout.milestoneId },
+      data: { status: "paid" },
+    });
   }
 
-  throw new Error(
-    `Unsupported payout webhook event: ${eventType}`
-  );
+  // ------------------------------------------
+  // APPEND AUDIT EVENT EXACTLY ONCE
+  // ------------------------------------------
+
+  const existingLedgerEvent =
+    await tx.ledgerEvent.findFirst({
+      where: {
+        entityId: currentPayout.id,
+        type: ledgerEventType,
+      },
+      select: { id: true },
+    });
+
+  if (!existingLedgerEvent) {
+    await appendEventInTransaction(
+      tx,
+      ledgerEventType,
+      currentPayout.id,
+      {
+        paypalBatchId: batchId,
+        senderBatchId: senderBatchId ?? null,
+        paypalPayoutItemId: payoutItemId ?? null,
+        transactionId: transactionId ?? null,
+        eventType,
+        source: "paypal_webhook",
+      }
+    );
+  }
+
+  return {
+    payoutId: currentPayout.id,
+    milestoneId: currentPayout.milestoneId,
+    ...(action === "item_succeeded"
+      ? {
+          organizationId:
+            payout.milestone.campaign.organizationId,
+        }
+      : {}),
+    action,
+  };
 }

@@ -16,6 +16,9 @@
     "test:auth": "node --env-file=../../.env --import tsx src/test-auth.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:order": "node --env-file=../../.env --import tsx src/test-create-order.ts",
-    "test:capture": "node --env-file=../../.env --import tsx src/test-capture-order.ts"
+    "test:capture": "node --env-file=../../.env --import tsx src/test-capture-order.ts",
+    "test:payout": "node --env-file=../../.env --import tsx src/test-payout.ts",
+    "test:client": "node --import tsx --test src/client.test.ts",
+    "test:payouts": "node --import tsx --test src/payouts.test.ts"
   }
 }
