@@ -169,8 +169,34 @@ const supportedEvents = new Set([
   "PAYMENT.CAPTURE.COMPLETED",
   "PAYMENT.CAPTURE.DENIED",
   "PAYMENT.CAPTURE.REFUNDED",
+
   "PAYMENT.PAYOUTSBATCH.SUCCESS",
+  "PAYMENT.PAYOUTSBATCH.PROCESSING",
+  "PAYMENT.PAYOUTSBATCH.DENIED",
+
   "PAYMENT.PAYOUTS-ITEM.SUCCEEDED",
+  "PAYMENT.PAYOUTS-ITEM.FAILED",
+  "PAYMENT.PAYOUTS-ITEM.BLOCKED",
+  "PAYMENT.PAYOUTS-ITEM.CANCELED",
+  "PAYMENT.PAYOUTS-ITEM.HELD",
+  "PAYMENT.PAYOUTS-ITEM.REFUNDED",
+  "PAYMENT.PAYOUTS-ITEM.RETURNED",
+  "PAYMENT.PAYOUTS-ITEM.UNCLAIMED",
+]);
+
+const payoutEvents = new Set([
+  "PAYMENT.PAYOUTSBATCH.SUCCESS",
+  "PAYMENT.PAYOUTSBATCH.PROCESSING",
+  "PAYMENT.PAYOUTSBATCH.DENIED",
+
+  "PAYMENT.PAYOUTS-ITEM.SUCCEEDED",
+  "PAYMENT.PAYOUTS-ITEM.FAILED",
+  "PAYMENT.PAYOUTS-ITEM.BLOCKED",
+  "PAYMENT.PAYOUTS-ITEM.CANCELED",
+  "PAYMENT.PAYOUTS-ITEM.HELD",
+  "PAYMENT.PAYOUTS-ITEM.REFUNDED",
+  "PAYMENT.PAYOUTS-ITEM.RETURNED",
+  "PAYMENT.PAYOUTS-ITEM.UNCLAIMED",
 ]);
 
 // ==========================================
@@ -662,12 +688,7 @@ export function createPayPalWebhookRouter(
             // PAYOUT: BATCH OR ITEM WEBHOOK
             // ======================================
 
-            else if (
-              event.event_type ===
-                "PAYMENT.PAYOUTSBATCH.SUCCESS" ||
-              event.event_type ===
-                "PAYMENT.PAYOUTS-ITEM.SUCCEEDED"
-            ) {
+            else if (payoutEvents.has(event.event_type)) {
               const result = await processPayoutWebhookEvent(
                 tx,
                 event.event_type,
