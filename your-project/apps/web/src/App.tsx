@@ -26,6 +26,36 @@ const roleLabels: Record<User["role"], string> = {
   reviewer: "Reviewer",
 };
 
+type SideIconName = "marketplace" | "organizer" | "dashboard" | "reviewer" | "heart";
+
+function SideIcon({ name }: { name: SideIconName }) {
+  const paths: Record<SideIconName, ReactNode> = {
+    marketplace: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></>,
+    organizer: <><path d="M12 20V9" /><path d="M12 12C7 12 5 9 5 5c4 0 7 2 7 7ZM12 15c0-4 2-7 7-7 0 4-2 7-7 7Z" /><path d="M7 20h10" /></>,
+    dashboard: <><path d="M4 19V5M4 19h16" /><path d="m7 15 4-4 3 2 5-6" /><path d="M16 7h3v3" /></>,
+    reviewer: <><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><path d="M9 4h6v4H9zM8 14l2.5 2.5L16 11" /></>,
+    heart: <><path d="M20.8 8.8c0 5.2-8.8 10.1-8.8 10.1S3.2 14 3.2 8.8A4.5 4.5 0 0 1 12 6.6a4.5 4.5 0 0 1 8.8 2.2Z" /></>,
+  };
+
+  return (
+    <svg
+      className="side-icon-svg"
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
 function AppLayout() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -114,21 +144,21 @@ function AppLayout() {
   }
 
   const context = { user, openSignIn };
-  const navItems = user?.role === "organizer"
+  const navItems: Array<{ to: string; label: string; icon: SideIconName }> = user?.role === "organizer"
     ? [
-        { to: "/", label: "Marketplace", icon: "◉" },
-        { to: "/organizer", label: "Organizer studio", icon: "⌂" },
-        { to: "/dashboard", label: "Impact dashboard", icon: "▥" },
+        { to: "/", label: "Marketplace", icon: "marketplace" },
+        { to: "/organizer", label: "Organizer studio", icon: "organizer" },
+        { to: "/dashboard", label: "Impact dashboard", icon: "dashboard" },
       ]
     : user?.role === "reviewer"
       ? [
-          { to: "/", label: "Marketplace", icon: "◉" },
-          { to: "/reviewer", label: "Review queue", icon: "✓" },
-          { to: "/dashboard", label: "Impact dashboard", icon: "▥" },
+          { to: "/", label: "Marketplace", icon: "marketplace" },
+          { to: "/reviewer", label: "Review queue", icon: "reviewer" },
+          { to: "/dashboard", label: "Impact dashboard", icon: "dashboard" },
         ]
       : [
-          { to: "/", label: "Marketplace", icon: "◉" },
-          { to: "/dashboard", label: "Impact dashboard", icon: "▥" },
+          { to: "/", label: "Marketplace", icon: "marketplace" },
+          { to: "/dashboard", label: "Impact dashboard", icon: "dashboard" },
         ];
 
   return (
@@ -137,7 +167,7 @@ function AppLayout() {
         <a className="skip-link" href="#main-content">Skip to content</a>
         <aside className="sidebar">
           <Link className="brand" to="/" aria-label="ImpactLedger home">
-            <span className="brand-mark">✳</span>
+            <span className="brand-mark" aria-hidden="true"><SideIcon name="organizer" /></span>
             <span>impact<span className="brand-light">ledger</span></span>
           </Link>
           <div className="side-label">YOUR SPACE</div>
@@ -147,17 +177,18 @@ function AppLayout() {
                 key={item.to}
                 to={item.to}
                 end={item.to === "/"}
+                title={item.label}
                 className={({ isActive }) => `side-link ${isActive ? "side-link--active" : ""}`}
               >
-                <span className="side-icon" aria-hidden="true">{item.icon}</span>
+                <span className="side-icon"><SideIcon name={item.icon} /></span>
                 <span>{item.label}</span>
               </NavLink>
             ))}
-            <a className="side-link" href="/#how-it-works"><span className="side-icon">♡</span><span>How it works</span></a>
+            <a className="side-link" href="/#how-it-works" title="How it works"><span className="side-icon"><SideIcon name="heart" /></span><span>How it works</span></a>
           </nav>
           <div className="sidebar-spacer" />
           <div className="sidebar-note">
-            <span className="note-icon">✦</span>
+            <span className="note-icon" aria-hidden="true"><SideIcon name="organizer" /></span>
             <p>Good things grow when everyone can see them.</p>
             <a href="/#trust">Our transparency promise <span aria-hidden="true">→</span></a>
           </div>
