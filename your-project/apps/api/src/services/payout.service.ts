@@ -45,12 +45,10 @@ function generateSenderBatchId(milestoneId: string): string {
 export async function sendMockPayout(input: {
   milestoneId: string;
   amountCents: number;
-  senderBatchId: string;
-  recipientEmail: string;
 }): Promise<PayoutSubmissionResult> {
   return {
     success: true,
-    senderBatchId: input.senderBatchId,
+    senderBatchId: generateSenderBatchId(input.milestoneId),
     message: "Mock payout submitted successfully",
   };
 }

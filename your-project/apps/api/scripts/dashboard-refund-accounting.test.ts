@@ -5,6 +5,8 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import express from "express";
+import cookieParser from "cookie-parser";
+import jwt from "jsonwebtoken";
 
 import { prisma } from "../src/lib/prisma";
 import dashboardRoutes from "../src/routes/dashboard.routes";
@@ -12,6 +14,8 @@ import { appendEvent } from "../src/services/ledger.service";
 
 let server: Server | undefined;
 let baseUrl = "";
+let authCookie = "";
+let authUserId = "";
 
 type DashboardResponse = {
   donationsByDay: {
@@ -44,7 +48,24 @@ before(async () => {
     );
   }
 
+  process.env.JWT_SECRET ??= "local-dashboard-test-secret-only";
+  const authUser = await prisma.user.create({
+    data: {
+      role: "donor",
+      name: "Dashboard Test User",
+      email: `dashboard-test-${randomUUID()}@example.test`,
+    },
+  });
+  authUserId = authUser.id;
+  const token = jwt.sign(
+    { sub: authUser.id },
+    process.env.JWT_SECRET!,
+    { expiresIn: "1h" },
+  );
+  authCookie = `impactledger_token=${token}`;
+
   const app = express();
+  app.use(cookieParser());
   app.use("/dashboard", dashboardRoutes);
 
   server = await new Promise<Server>((resolve) => {
@@ -69,13 +90,19 @@ after(async () => {
     });
   }
 
+  if (authUserId) {
+    await prisma.user.delete({ where: { id: authUserId } });
+  }
+
   await prisma.$disconnect();
 });
 
 test("Dashboard daily donations reflect completed refunds", async () => {
   // Capture the existing dashboard values so unrelated test
   // records on the same day do not affect the assertion.
-  const beforeResponse = await fetch(`${baseUrl}/dashboard/summary`);
+  const beforeResponse = await fetch(`${baseUrl}/dashboard/summary`, {
+    headers: { Cookie: authCookie },
+  });
   const beforeBody =
     await beforeResponse.json() as DashboardResponse;
 
@@ -174,7 +201,9 @@ test("Dashboard daily donations reflect completed refunds", async () => {
   const previousAmount = previousDay?.amountCents ?? 0;
   const previousCount = previousDay?.donationCount ?? 0;
 
-  const afterResponse = await fetch(`${baseUrl}/dashboard/summary`);
+  const afterResponse = await fetch(`${baseUrl}/dashboard/summary`, {
+    headers: { Cookie: authCookie },
+  });
   const afterBody =
     await afterResponse.json() as DashboardResponse;
 

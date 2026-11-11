@@ -130,3 +130,18 @@ export type CreateCampaignInput =
 
 export type CreateMilestoneInput =
   z.infer<typeof CreateMilestoneInputSchema>;
+
+export const UpdateOrganizationPayoutEmailSchema = z.object({
+  payoutEmail: z.string().trim().email(),
+}).strict();
+
+export type UpdateOrganizationPayoutEmail =
+  z.infer<typeof UpdateOrganizationPayoutEmailSchema>;
+
+export const RoutingSuggestionInputSchema = z.object({
+  goal: z.string().trim().min(1).max(240),
+  amountCents: z.number().int().positive().max(100_000_000),
+}).strict();
+
+export type RoutingSuggestionInput =
+  z.infer<typeof RoutingSuggestionInputSchema>;
