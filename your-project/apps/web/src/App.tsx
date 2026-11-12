@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Link,
   NavLink,
+  Navigate,
   Outlet,
   Route,
   Routes,
@@ -342,6 +343,9 @@ export default function App() {
           <Route path="reviewer" element={<RequireRole role="reviewer"><ReviewerPage /></RequireRole>} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="paypal/return" element={<PaymentReturnPage />} />
+          <Route path="donations/return" element={<PaymentReturnPage />} />
+          <Route path="paypal/cancel" element={<Navigate to="/" replace />} />
+          <Route path="donations/cancel" element={<Navigate to="/" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

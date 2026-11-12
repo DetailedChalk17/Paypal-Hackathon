@@ -121,8 +121,8 @@ router.post(
           campaignId,
           amountCents,
           requestId: donation.id,
-          returnUrl: `${frontendUrl}/donations/return?donationId=${donation.id}`,
-          cancelUrl: `${frontendUrl}/donations/cancel?donationId=${donation.id}`,
+          returnUrl: `${frontendUrl}/paypal/return?donationId=${donation.id}`,
+          cancelUrl: `${frontendUrl}/paypal/cancel?donationId=${donation.id}`,
         });
       } catch (paypalError) {
         console.error("PayPal order creation error:", paypalError);

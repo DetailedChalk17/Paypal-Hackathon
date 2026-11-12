@@ -166,6 +166,11 @@ app.use("/ledger", ledgerRoutes);
 app.use("/organizations", trustScoreRoutes);
 
 // PayPal donations
+app.get(["/donations/return", "/paypal/return"], (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:5173";
+  const query = new URLSearchParams(req.query as any).toString();
+  return res.redirect(`${frontendUrl}/paypal/return?${query}`);
+});
 app.use("/donations", donationPaymentRoutes);
 
 // B6: Donation receipt and trace
