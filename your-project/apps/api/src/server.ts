@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import dotenv from "dotenv";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
@@ -179,6 +180,34 @@ app.use("/organizations", organizationRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/routing", routingRoutes);
 app.use("/payouts", payoutRoutes);
+
+// ==========================================
+// FRONTEND STATIC SERVING (PRODUCTION)
+// ==========================================
+const webDistPath = path.resolve(__dirname, "../../web/dist");
+if (fs.existsSync(webDistPath)) {
+  app.use(express.static(webDistPath));
+  app.use((req, res, next) => {
+    const isHtmlRequest = Boolean(req.headers.accept?.includes("text/html"));
+    const isApiRequest =
+      req.path.startsWith("/auth") ||
+      req.path.startsWith("/campaigns") ||
+      req.path.startsWith("/donations") ||
+      req.path.startsWith("/evidence") ||
+      req.path.startsWith("/evidence-files") ||
+      req.path.startsWith("/ledger") ||
+      req.path.startsWith("/organizations") ||
+      req.path === "/dashboard/summary" ||
+      req.path.startsWith("/routing") ||
+      req.path.startsWith("/payouts") ||
+      req.path.startsWith("/health");
+
+    if (req.method !== "GET" || (isApiRequest && !isHtmlRequest)) {
+      return next();
+    }
+    return res.sendFile(path.join(webDistPath, "index.html"));
+  });
+}
 
 // ==========================================
 // CENTRALIZED ERROR HANDLING
