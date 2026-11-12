@@ -7,6 +7,7 @@ import {
 } from "../middleware/auth.middleware";
 
 import { prisma } from "../lib/prisma";
+import { getNetDonationAmountsCents } from "../services/refund.service";
 
 import {
   CreateCampaignInputSchema,
@@ -126,13 +127,16 @@ router.get("/:id", async (req, res) => {
         organization: true,
         milestones: true,
         donations: {
-          where: {
-            status: "completed",
-          },
-          select: {
-            amountCents: true,
-          },
-        },
+  where: {
+    status: "completed",
+  },
+  select: {
+    id: true,
+    amountCents: true,
+    status: true,
+    paypalCaptureId: true,
+  },
+},
       },
     });
 
@@ -142,11 +146,22 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    const raisedAmountCents = campaign.donations.reduce(
-      (total, donation) => total + donation.amountCents,
-      0
-    );
+   const netAmounts = await getNetDonationAmountsCents(
+  prisma,
+  campaign.donations.map((donation) => ({
+    id: donation.id,
+    amountCents: donation.amountCents,
+    status: donation.status,
+    paypalCaptureId: donation.paypalCaptureId,
+    currencyCode: campaign.currency,
+  }))
+);
 
+const raisedAmountCents = campaign.donations.reduce(
+  (total, donation) =>
+    total + (netAmounts.get(donation.id) ?? 0),
+  0
+);
     return res.status(200).json({
       ...campaign,
       raisedAmountCents,
@@ -324,9 +339,8 @@ router.get("/:campaignId/impact-update", async (req, res) => {
         },
         milestones: {
           include: {
-            payouts: {
-              where: { status: "paid" },
-              select: { amountCents: true },
+            payout: {
+              select: { amountCents: true, status: true },
             },
           },
           orderBy: { dueDate: "asc" },
@@ -348,10 +362,7 @@ router.get("/:campaignId/impact-update", async (req, res) => {
     const donorCount = new Set(campaign.donations.map((d) => d.donorId)).size;
 
     const milestones = campaign.milestones.map((m) => {
-      const paidCents = m.payouts.reduce(
-        (sum, p) => sum + p.amountCents,
-        0
-      );
+      const paidCents = m.payout?.status === "paid" ? m.payout.amountCents : 0;
       return {
         title: m.title,
         status: m.status as "open" | "evidence_submitted" | "approved" | "rejected" | "paid",

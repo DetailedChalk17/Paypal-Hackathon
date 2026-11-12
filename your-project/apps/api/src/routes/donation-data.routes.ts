@@ -3,6 +3,7 @@ import { Router } from "express";
 
 import { requireAuth } from "../middleware/auth.middleware";
 import { prisma } from "../lib/prisma";
+import { getNetDonationAmountsCents } from "../services/refund.service";
 
 const router = Router();
 
@@ -20,11 +21,11 @@ type MilestoneForAllocation = {
     reviewerDecision: string;
     submittedAt: Date;
   }[];
-  payouts: {
+  payout: {
     id: string;
     amountCents: number;
     status: string;
-  }[];
+  } | null;
 };
 
 // ==========================================
@@ -35,10 +36,10 @@ function getMilestoneAllocations(
   amountCents: number,
   goalAmountCents: number,
   milestones: MilestoneForAllocation[],
-  donationStatus: string
+  donationStatus: string,
+  netAmountCents = amountCents
 ) {
   const funded = donationStatus === "completed";
-
   const refunded = donationStatus === "refunded";
 
   const totalMilestoneBudget = milestones.reduce(
@@ -54,7 +55,7 @@ function getMilestoneAllocations(
   );
 
   // Only completed donations are allocated.
-  const eligibleAmount = funded ? amountCents : 0;
+  const eligibleAmount = funded ? netAmountCents : 0;
 
   const allocations = milestones.map((milestone) => {
     const hasApprovedEvidence = milestone.evidence.some(
@@ -102,11 +103,16 @@ function getMilestoneAllocations(
         submittedAt: evidence.submittedAt,
       })),
 
-      payouts: milestone.payouts.map((payout) => ({
-        id: payout.id,
-        amountCents: payout.amountCents,
-        status: payout.status,
-      })),
+      // Preserve the existing API response as an array.
+      payouts: milestone.payout
+        ? [
+            {
+              id: milestone.payout.id,
+              amountCents: milestone.payout.amountCents,
+              status: milestone.payout.status,
+            },
+          ]
+        : [],
     };
   });
 
@@ -155,7 +161,10 @@ function getMilestoneAllocations(
         : 0,
 
     // A refunded donation is reported separately.
-    refundedAmountCents: refunded ? amountCents : 0,
+    refundedAmountCents:
+      funded || refunded
+        ? Math.max(0, amountCents - netAmountCents)
+        : 0,
   };
 }
 
@@ -197,7 +206,8 @@ async function findDonationDetails(donationId: string) {
                 },
               },
 
-              payouts: {
+              // One milestone has at most one payout.
+              payout: {
                 select: {
                   id: true,
                   amountCents: true,
@@ -279,11 +289,34 @@ router.get(
         });
       }
 
+      const netAmounts = await getNetDonationAmountsCents(
+        prisma,
+        [
+          {
+            id: donation.id,
+            amountCents: donation.amountCents,
+            status: donation.status,
+            paypalCaptureId: donation.paypalCaptureId,
+            currencyCode: donation.campaign.currency,
+          },
+        ]
+      );
+
+      const netAmountCents =
+        netAmounts.get(donation.id) ?? 0;
+
+      const refundedAmountCents =
+        donation.status === "completed" ||
+        donation.status === "refunded"
+          ? Math.max(0, donation.amountCents - netAmountCents)
+          : 0;
+
       const allocation = getMilestoneAllocations(
         donation.amountCents,
         donation.campaign.goalAmountCents,
         donation.campaign.milestones,
-        donation.status
+        donation.status,
+        netAmountCents
       );
 
       // Latest hash from the global ledger.
@@ -303,6 +336,8 @@ router.get(
         donation: {
           id: donation.id,
           amountCents: donation.amountCents,
+          netAmountCents,
+          refundedAmountCents,
           currency: donation.campaign.currency,
           status: donation.status,
           paypalOrderId: donation.paypalOrderId,
@@ -396,11 +431,34 @@ router.get(
 
       const funded = donation.status === "completed";
 
+      const netAmounts = await getNetDonationAmountsCents(
+        prisma,
+        [
+          {
+            id: donation.id,
+            amountCents: donation.amountCents,
+            status: donation.status,
+            paypalCaptureId: donation.paypalCaptureId,
+            currencyCode: donation.campaign.currency,
+          },
+        ]
+      );
+
+      const netAmountCents =
+        netAmounts.get(donation.id) ?? 0;
+
+      const refundedAmountCents =
+        donation.status === "completed" ||
+        donation.status === "refunded"
+          ? Math.max(0, donation.amountCents - netAmountCents)
+          : 0;
+
       const allocation = getMilestoneAllocations(
         donation.amountCents,
         donation.campaign.goalAmountCents,
         donation.campaign.milestones,
-        donation.status
+        donation.status,
+        netAmountCents
       );
 
       // ==========================================
@@ -436,6 +494,8 @@ router.get(
           label: "Donation",
           status: donation.status,
           amountCents: donation.amountCents,
+          netAmountCents,
+          refundedAmountCents,
         },
 
         {
@@ -474,9 +534,7 @@ router.get(
           source: donationNodeId,
           target: campaignNodeId,
           type: "funded",
-          amountCents: funded
-            ? donation.amountCents
-            : 0,
+          amountCents: funded ? netAmountCents : 0,
         },
 
         {
@@ -567,8 +625,10 @@ router.get(
           });
         }
 
-        // Payout nodes.
-        for (const payout of milestone.payouts) {
+        // A milestone now has zero or one payout.
+        if (milestone.payout) {
+          const payout = milestone.payout;
+
           const payoutNodeId =
             `payout:${payout.id}`;
 

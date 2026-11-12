@@ -196,3 +196,109 @@ export async function captureOrder(input: CaptureOrderInput) {
     currencyCode: capture.amount.currency_code,
   };
 }
+// Input required to refund a captured donation.
+
+type RefundCaptureInput = {
+  captureId: string;
+  requestId: string;
+  customId: string;
+  amountCents?: number;
+  noteToPayer?: string;
+};
+
+type PayPalRefundResponse = {
+  id: string;
+  status: string;
+  custom_id?: string;
+};
+
+// STEP 3: Refund a captured payment.
+// Omit amountCents for a full refund.
+// Provide amountCents for a partial refund.
+export async function refundCapture(input: RefundCaptureInput) {
+  const {
+    captureId,
+    requestId,
+    customId,
+    amountCents,
+    noteToPayer,
+  } = input;
+
+  const normalizedCaptureId = captureId.trim();
+  const normalizedRequestId = requestId.trim();
+  const normalizedCustomId = customId.trim();
+
+  if (!normalizedCaptureId) {
+    throw new Error("Capture ID is required.");
+  }
+
+  if (!normalizedRequestId) {
+    throw new Error("An idempotency request ID is required.");
+  }
+
+  if (
+    !normalizedCustomId ||
+    normalizedCustomId.length > 127
+  ) {
+    throw new Error("Invalid refund reconciliation ID.");
+  }
+
+  const body: {
+    amount?: {
+      currency_code: string;
+      value: string;
+    };
+    custom_id: string;
+    note_to_payer?: string;
+  } = {
+    custom_id: normalizedCustomId,
+  };
+
+  if (amountCents !== undefined) {
+    body.amount = {
+      currency_code: "USD",
+      value: centsToAmount(amountCents),
+    };
+  }
+
+  if (noteToPayer !== undefined) {
+    const normalizedNote = noteToPayer.trim();
+
+    if (!normalizedNote || normalizedNote.length > 255) {
+      throw new Error(
+        "Refund note must contain between 1 and 255 characters."
+      );
+    }
+
+    body.note_to_payer = normalizedNote;
+  }
+
+  const response = await paypalRequest<PayPalRefundResponse>(
+    `/v2/payments/captures/${encodeURIComponent(normalizedCaptureId)}/refund`,
+    {
+      method: "POST",
+      requestId: normalizedRequestId,
+      body,
+    }
+  );
+
+  if (!response.id || !response.status) {
+    throw new Error("PayPal returned an invalid refund response.");
+  }
+
+  if (
+    response.custom_id &&
+    response.custom_id !== normalizedCustomId
+  ) {
+    throw new Error(
+      "PayPal returned an unexpected refund reconciliation ID."
+    );
+  }
+
+  return {
+    refundId: response.id,
+    captureId: normalizedCaptureId,
+    customId: normalizedCustomId,
+    status: response.status,
+  };
+}

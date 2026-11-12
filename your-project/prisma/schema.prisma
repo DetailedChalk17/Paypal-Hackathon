@@ -1,3 +1,4 @@
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -38,6 +39,14 @@ enum DonationStatus {
   failed
   refunded
 }
+enum RefundStatus {
+  processing
+  pending
+  completed
+  failed
+  cancelled
+  reconciliation_required
+}
 
 // Evidence review decision
 enum ReviewerDecision {
@@ -52,6 +61,7 @@ enum PayoutStatus {
   processing
   paid
   failed
+  reconciliation_required
 }
 
 // 1. User
@@ -107,7 +117,7 @@ model Milestone {
 
   campaign Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   evidence Evidence[]
-  payouts  Payout[]
+  payout   Payout?
 }
 
 // 5. Donation
@@ -120,9 +130,28 @@ model Donation {
   paypalCaptureId String?        @unique
   status          DonationStatus @default(pending)
   completedAt     DateTime?      @db.Timestamptz(3)
-
+  refunds Refund[]
   campaign Campaign @relation(fields: [campaignId], references: [id])
   donor    User     @relation(fields: [donorId], references: [id])
+}
+// Tracks individual PayPal refunds against a donation.
+model Refund {
+  id             String       @id @default(uuid()) @db.Uuid
+  donationId     String       @db.Uuid
+  idempotencyKey String
+  paypalRefundId String?      @unique
+  amountCents    Int
+  status         RefundStatus @default(processing)
+  noteToPayer    String?
+  failureReason  String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  completedAt    DateTime?    @db.Timestamptz(3)
+
+  donation Donation @relation(fields: [donationId], references: [id])
+
+  @@unique([donationId, idempotencyKey])
+  @@index([donationId, status])
 }
 
 // 6. Evidence
@@ -134,19 +163,28 @@ model Evidence {
   aiFindings       Json
   reviewerDecision ReviewerDecision @default(pending)
   submittedAt      DateTime         @default(now()) @db.Timestamptz(3)
-  milestone        Milestone        @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
 }
 
 // 7. Payout
 model Payout {
-  id            String       @id @default(uuid()) @db.Uuid
-  milestoneId   String       @db.Uuid
-  amountCents   Int
-  senderBatchId String?      @unique
-  paypalBatchId String?      @unique
-  status        PayoutStatus @default(pending)
+  id                         String       @id @default(uuid()) @db.Uuid
+  milestoneId                String       @unique @db.Uuid
+  amountCents                Int
+  senderBatchId              String?      @unique
+  paypalBatchId              String?      @unique
+  status                     PayoutStatus @default(pending)
+
+  // Tracks when the current submission attempt began.
+  submissionAttemptStartedAt DateTime?    @db.Timestamptz(3)
+
+  // Tracks when the payout provider confirmed submission acceptance.
+  submittedAt                DateTime?    @db.Timestamptz(3)
 
   milestone Milestone @relation(fields: [milestoneId], references: [id])
+
+  @@index([status, submissionAttemptStartedAt])
 }
 
 // 8. Ledger Event
@@ -164,13 +202,18 @@ model LedgerEvent {
 
 // PayPal webhook events — prevents duplicate processing
 model WebhookEvent {
-  id            String    @id @default(uuid()) @db.Uuid
-  paypalEventId String    @unique
-  eventType     String
-  resourceId    String?
-  payload       Json
-  receivedAt    DateTime  @default(now()) @db.Timestamptz(3)
-  processedAt   DateTime? @db.Timestamptz(3)
+  id               String    @id @default(uuid()) @db.Uuid
+  paypalEventId    String    @unique
+  eventType        String
+  resourceId       String?
+  payload          Json
+
+  processingStatus String    @default("received")
+  lastError        String?
+
+  receivedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  processedAt      DateTime? @db.Timestamptz(3)
 
   @@index([eventType, receivedAt])
+  @@index([processingStatus, receivedAt])
 }

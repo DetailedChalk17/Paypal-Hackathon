@@ -9,6 +9,8 @@
     "test:ledger": "tsx scripts/ledger-test.ts",
     "test:trust-score": "tsx --test scripts/trust-score.test.ts",
     "test:e2e": "NODE_ENV=test tsx --env-file=../../.env scripts/e2e-integration.test.ts",
+    "test:payout-service": "tsx --test scripts/payout.service.test.ts",
+    "test:payout-webhook": "tsx --test scripts/payout-webhook.test.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {

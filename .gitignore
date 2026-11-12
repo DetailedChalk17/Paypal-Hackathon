@@ -6,6 +6,10 @@ node_modules/
 .env.*
 !.env.example
 
+# Sensitive local cookie exports
+cookies.txt
+**/cookies.txt
+
 # Build output
 dist/
 build/
@@ -17,3 +21,4 @@ coverage/
 *.log
 npm-debug.log*
 .DS_Store
+**/.DS_Store

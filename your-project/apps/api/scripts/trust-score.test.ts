@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { randomUUID } from "node:crypto";
 
 import { calculateTrustScore } from "../src/services/trust-score.service";
 
@@ -11,6 +12,7 @@ function makeEvidence(
   ledgerApproved = false
 ) {
   return {
+    id: randomUUID(),
     reviewerDecision,
     submittedAt: new Date(submittedAt),
     ledgerApproved,

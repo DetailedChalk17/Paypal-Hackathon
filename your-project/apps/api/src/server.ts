@@ -23,6 +23,7 @@ import paypalWebhookRoutes from "./routes/paypal-webhook.routes";
 import organizationRoutes from "./routes/organization.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import routingRoutes from "./routes/routing.routes";
+
 import payoutRoutes from "./routes/payout.routes";
 
 const app = express();
@@ -161,12 +162,10 @@ app.use("/donations", donationPaymentRoutes);
 
 // B6: Donation receipt and trace
 app.use("/donations", donationDataRoutes);
-
-// B7: Organization marketplace
 app.use("/organizations", organizationRoutes);
-
-// B7: Dashboard summary
 app.use("/dashboard", dashboardRoutes);
+app.use("/routing", routingRoutes);
+app.use("/payouts", payoutRoutes);
 
 // Routing assistant
 app.use("/routing", routingRoutes);
