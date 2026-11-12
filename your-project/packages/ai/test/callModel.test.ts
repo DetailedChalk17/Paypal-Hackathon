@@ -79,6 +79,10 @@ describe("providerFromEnv", () => {
     expect(providerFromEnv({ AI_API_KEY: "k", AI_MODEL: "gemini-x" })?.model).toBe("gemini-x");
     expect(providerFromEnv({ AI_API_KEY: "k", AI_PROVIDER: "unknown" })).toBeNull();
   });
+
+  it("returns MockProvider when AI_MODE=mock", () => {
+    expect(providerFromEnv({ AI_MODE: "mock" })).toMatchObject({ name: "mock" });
+  });
 });
 
 describe("GeminiProvider", () => {

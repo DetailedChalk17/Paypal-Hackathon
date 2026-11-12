@@ -1,0 +1,13 @@
+{
+  "name": "impactledger-root",
+  "private": true,
+  "description": "ImpactLedger — Generosity, Made Transparent",
+  "scripts": {
+    "dev": "npm --prefix your-project run dev",
+    "seed": "npm --prefix your-project run seed",
+    "build": "npm --prefix your-project run build",
+    "typecheck": "npm --prefix your-project run typecheck",
+    "prisma": "npm --prefix your-project exec -- prisma",
+    "postinstall": "npm --prefix your-project install"
+  }
+}

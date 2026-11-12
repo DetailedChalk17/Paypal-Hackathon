@@ -6,20 +6,29 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "concurrently -n \"api,web\" -c \"blue,green\" \"npm run dev --workspace=@your-project/api\" \"npm run dev --workspace=@your-project/web\"",
+    "seed": "tsx prisma/seed.ts",
+    "build": "npm run build:api && npm run build:web",
     "build:api": "npx prisma generate && npm run build --workspace=@your-project/paypal && npm run build --workspace=@your-project/api",
     "start:api": "npm run start --workspace=@your-project/api",
+    "dev:api": "npm run dev --workspace @your-project/api",
     "dev:web": "npm run dev --workspace @your-project/web",
     "build:web": "npm run build --workspace @your-project/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:web": "npm run typecheck --workspace @your-project/web"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "concurrently": "^10.0.7",
     "prisma": "^6.19.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@prisma/client": "^6.19.3",
+    "@rollup/rollup-darwin-arm64": "^4.68.2",
+    "@tailwindcss/oxide-darwin-arm64": "^4.3.4",
+    "lightningcss-darwin-arm64": "^1.33.0"
   },
   "allowScripts": {
     "esbuild@0.28.2": true

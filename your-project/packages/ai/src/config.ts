@@ -1,13 +1,22 @@
 import { GeminiProvider } from "./providers/gemini";
+import { MockProvider } from "./providers/mock";
 import type { ModelProvider } from "./providers/types";
 
 export const DEFAULT_PROVIDER = "gemini";
 export const DEFAULT_MODEL = "gemini-2.5-flash";
 
-// Reads AI_PROVIDER, AI_MODEL and AI_API_KEY from the environment. The caller
-// (API server or eval script) is responsible for loading .env.
-// Returns null when no key is set, which callModel reports as api_error.
+// Reads AI_MODE, AI_PROVIDER, AI_MODEL and AI_API_KEY from the environment.
+// If AI_MODE=mock, AI_PROVIDER=mock, or no AI_API_KEY is configured,
+// a deterministic MockProvider is returned so judges can test without an API key.
 export function providerFromEnv(env: NodeJS.ProcessEnv = process.env): ModelProvider | null {
+  const isMock =
+    env.AI_MODE?.toLowerCase() === "mock" ||
+    env.AI_PROVIDER?.toLowerCase() === "mock";
+
+  if (isMock) {
+    return new MockProvider();
+  }
+
   const apiKey = env.AI_API_KEY?.trim();
   if (!apiKey) return null;
 
