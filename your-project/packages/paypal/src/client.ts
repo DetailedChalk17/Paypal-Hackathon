@@ -127,7 +127,10 @@ function createTransportError(
 export async function getAccessToken(): Promise<string> {
   const clientId = getRequiredEnv("PAYPAL_CLIENT_ID");
   const clientSecret = getRequiredEnv("PAYPAL_CLIENT_SECRET");
-  const environment = getRequiredEnv("PAYPAL_ENV");
+  const environment =
+    process.env.PAYPAL_ENV ??
+    process.env.PAYPAL_ENVIRONMENT ??
+    getRequiredEnv("PAYPAL_ENV");
 
   if (environment !== "sandbox") {
     throw new PayPalConfigurationError(
