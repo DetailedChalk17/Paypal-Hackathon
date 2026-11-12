@@ -118,11 +118,18 @@ export function ReviewerPage() {
           <div className="failed-payout-list">
             {(payoutsQuery.data ?? []).map((payout: FailedPayout) => (
               <article className="failed-payout-row" key={payout.id}>
-                <span className="flag-severity flag-severity--high" />
-                <div><strong>{payout.milestone.title}</strong><small>{payout.milestone.campaign.title} · {payout.milestone.campaign.organization.name}</small></div>
-                <strong>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(payout.amountCents / 100)}</strong>
-                <span className="status-chip status-chip--rejected">{payout.status}</span>
-                <button className="button button--outline button--small" disabled={retry.isPending} onClick={() => retry.mutate(payout.id)}>{retry.isPending && retry.variables === payout.id ? "Retrying…" : "Retry payout"}</button>
+                <div className="failed-payout-main">
+                  <span className="flag-severity flag-severity--high" />
+                  <div className="failed-payout-details">
+                    <strong>{payout.milestone.title}</strong>
+                    <small>{payout.milestone.campaign.title} · {payout.milestone.campaign.organization.name}</small>
+                  </div>
+                </div>
+                <div className="failed-payout-meta">
+                  <span className="failed-payout-amount">{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(payout.amountCents / 100)}</span>
+                  <span className="status-chip status-chip--rejected">{payout.status}</span>
+                  <button className="button button--outline button--small" disabled={retry.isPending} onClick={() => retry.mutate(payout.id)}>{retry.isPending && retry.variables === payout.id ? "Retrying…" : "Retry payout"}</button>
+                </div>
               </article>
             ))}
           </div>

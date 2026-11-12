@@ -577,6 +577,19 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline
   .button--reject { border-color: #ecd6cf; background: #fff; color: #a2685e; }
   .button--reject:hover { background: #fbf0ed; }
 
+  .failed-payout-panel { margin-top: 24px; padding: 19px; border: 1px solid #e7e9e2; border-radius: 9px; background: white; }
+  .failed-payout-panel .panel-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; margin-bottom: 16px; }
+  .failed-payout-panel .panel-title-row h2 { margin: 6px 0 3px; color: #354c3c; font: 700 18px Manrope, sans-serif; }
+  .failed-payout-panel .panel-title-row p { margin: 0; color: #919b91; font-size: 11px; }
+  .failed-payout-list { display: flex; flex-direction: column; gap: 10px; }
+  .failed-payout-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding: 14px 18px; border: 1px solid #fae8e6; border-radius: 8px; background: #fffafa; }
+  .failed-payout-main { display: flex; align-items: center; gap: 12px; }
+  .failed-payout-details { display: flex; flex-direction: column; gap: 3px; }
+  .failed-payout-details strong { color: #2d4034; font: 700 13px Manrope, sans-serif; }
+  .failed-payout-details small { color: #838e83; font-size: 11px; }
+  .failed-payout-meta { display: flex; align-items: center; gap: 14px; }
+  .failed-payout-amount { color: #2e4a38; font: 700 14px Manrope, sans-serif; }
+
   .receipt-page { padding-bottom: 50px; }
   .receipt-card { max-width: 810px; margin: 0 auto; padding: 31px 42px 25px; box-shadow: 0 12px 36px #3548300b; }
   .receipt-header { display: flex; align-items: center; gap: 13px; padding-bottom: 19px; border-bottom: 1px solid #edf0e9; }
