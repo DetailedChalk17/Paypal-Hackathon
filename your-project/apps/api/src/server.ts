@@ -180,12 +180,6 @@ app.use("/dashboard", dashboardRoutes);
 app.use("/routing", routingRoutes);
 app.use("/payouts", payoutRoutes);
 
-// Routing assistant
-app.use("/routing", routingRoutes);
-
-// Payouts
-app.use("/payouts", payoutRoutes);
-
 // ==========================================
 // CENTRALIZED ERROR HANDLING
 // ==========================================
