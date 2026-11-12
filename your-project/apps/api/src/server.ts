@@ -73,9 +73,10 @@ app.use((req, res, next) => {
 // ==========================================
 // PAYPAL WEBHOOKS
 // Must run before JSON body parsing.
+// Support /webhooks/paypal, /donations/webhooks/paypal, /paypal/webhooks
 // ==========================================
 
-app.use("/webhooks", paypalWebhookRoutes);
+app.use(["/webhooks", "/donations/webhooks", "/paypal/webhooks"], paypalWebhookRoutes);
 
 // ==========================================
 // GENERAL MIDDLEWARE

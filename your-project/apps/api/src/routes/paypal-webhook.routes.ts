@@ -359,7 +359,7 @@ export function createPayPalWebhookRouter(
 
   router.post(
 
-    "/paypal",
+    ["/paypal", "/"],
 
     express.raw({
 
