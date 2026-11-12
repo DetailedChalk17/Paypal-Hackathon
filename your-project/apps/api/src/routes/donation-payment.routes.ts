@@ -33,7 +33,7 @@ function isValidUuid(value: unknown): value is string {
 // ==========================================
 
 router.post(
-  "/order",
+  ["/order", "/create-order"],
   requireAuth,
   requireRole("donor"),
   async (req, res) => {
@@ -132,8 +132,19 @@ router.post(
           data: { status: "failed" },
         });
 
+        await appendEvent(
+          "DONATION_ORDER_FAILED",
+          donation.id,
+          {
+            donationId: donation.id,
+            campaignId,
+            amountCents,
+            error: (paypalError as any)?.message ?? "PayPal order creation failed",
+          }
+        );
+
         return res.status(502).json({
-          error: "Unable to create PayPal order",
+          error: "Unable to create PayPal donation order",
         });
       }
 
@@ -145,11 +156,23 @@ router.post(
         },
       });
 
+      await appendEvent(
+        "DONATION_ORDER_CREATED",
+        donation.id,
+        {
+          donationId: donation.id,
+          campaignId,
+          amountCents,
+          paypalOrderId: paypalOrder.orderId,
+        }
+      );
+
       return res.status(201).json({
         donationId: donation.id,
         orderId: paypalOrder.orderId,
         approvalUrl: paypalOrder.approvalUrl,
         status: "pending",
+        ledgerRecorded: true,
       });
     } catch (error) {
       console.error("Create donation error:", error);
@@ -168,11 +191,11 @@ router.post(
 // ==========================================
 
 router.post(
-  "/capture",
+  ["/capture", "/:donationId/capture"],
   requireAuth,
   requireRole("donor"),
   async (req, res) => {
-    const { donationId } = req.body ?? {};
+    const donationId = req.params.donationId ?? req.body?.donationId;
 
     if (!isValidUuid(donationId)) {
       return res.status(400).json({
@@ -203,6 +226,7 @@ router.post(
           donationId: donation.id,
           status: "completed",
           message: "Donation already captured",
+          alreadyCaptured: true,
         });
       }
 
@@ -238,6 +262,64 @@ router.post(
         });
       }
 
+      // Handle non-completed statuses (e.g. PENDING, DENIED)
+      if (captureResult.captureStatus === "PENDING") {
+        await prisma.donation.update({
+          where: { id: donation.id },
+          data: {
+            paypalCaptureId: captureResult.captureId,
+          },
+        });
+
+        return res.status(202).json({
+          donationId: donation.id,
+          status: "pending",
+          captureId: captureResult.captureId,
+        });
+      }
+
+      if (captureResult.captureStatus !== "COMPLETED") {
+        // Check current DB status first to prevent race downgrade
+        const latest = await prisma.donation.findUnique({
+          where: { id: donation.id },
+        });
+
+        if (latest?.status === "completed") {
+          return res.status(200).json({
+            donationId: latest.id,
+            status: "completed",
+            captureId: latest.paypalCaptureId ?? captureResult.captureId,
+          });
+        }
+
+        await prisma.donation.update({
+          where: { id: donation.id },
+          data: {
+            status: "failed",
+            paypalCaptureId: captureResult.captureId,
+          },
+        });
+
+        await appendEvent(
+          "DONATION_CAPTURE_DENIED",
+          donation.id,
+          {
+            donationId: donation.id,
+            campaignId: donation.campaignId,
+            donorId: donation.donorId,
+            paypalOrderId: donation.paypalOrderId,
+            paypalCaptureId: captureResult.captureId,
+            status: captureResult.captureStatus,
+          }
+        );
+
+        return res.status(402).json({
+          donationId: donation.id,
+          status: "failed",
+          captureId: captureResult.captureId,
+        });
+      }
+
       // Update donation status and record in ledger atomically
       const updatedDonation = await prisma.$transaction(
         async (tx) => {
@@ -246,7 +328,7 @@ router.post(
             where: { id: donation.id },
           });
 
-          if (current?.status === "completed") {
+          if (current?.status === "completed" || current?.status === "refunded") {
             return current;
           }
 
@@ -275,6 +357,15 @@ router.post(
           return captured;
         }
       );
+
+      // If the donation was already refunded during the capture wait, return its refunded state
+      if (updatedDonation.status === "refunded") {
+        return res.status(200).json({
+          donationId: updatedDonation.id,
+          status: "refunded",
+          captureId: captureResult.captureId,
+        });
+      }
 
       // Check whether campaign has met its funding goal
       const campaign = await prisma.campaign.findUnique({
@@ -311,6 +402,7 @@ router.post(
         donationId: updatedDonation.id,
         status: updatedDonation.status,
         captureId: updatedDonation.paypalCaptureId,
+        ledgerRecorded: true,
       });
     } catch (error) {
       console.error("Capture donation error:", error);
