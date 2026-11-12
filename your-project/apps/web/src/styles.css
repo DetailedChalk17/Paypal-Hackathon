@@ -720,9 +720,14 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline
   .studio-agent-copy p { margin: 0; color: #929d8c; font-size: 8px; }
   .studio-agent-form > label { display: block; margin-bottom: 5px; color: #74836e; font-size: 8px; font-weight: 600; }
   .studio-agent-form > div { display: flex; gap: 7px; }
-  .studio-agent-form input { flex: 1; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid #dfe5d7; border-radius: 6px; background: white; color: #52644d; font-size: 9px; }
-  .studio-agent-form .button { min-height: 36px; padding: 0 11px; font-size: 8px; }
-  .studio-agent-form > small { display: block; margin-top: 5px; color: #718452; font-size: 8px; }
+  .studio-agent-form input { flex: 1; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid #dfe5d7; border-radius: 6px; background: white; color: #52644d; font-size: 11px; }
+  .studio-agent-form .button { min-height: 36px; padding: 0 11px; font-size: 10px; }
+  .studio-agent-form > small { display: block; margin-top: 6px; color: #3b6b3e; font-size: 10px; font-weight: 600; }
+  .prompt-suggestions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+  .prompt-suggestions span { color: #74836e; font-size: 9px; font-weight: 600; }
+  .prompt-suggestions button { padding: 3px 8px; border: 1px solid #d4dec9; border-radius: 12px; background: #ffffffa0; color: #4b6248; font-size: 9px; cursor: pointer; transition: all 0.15s ease; }
+  .prompt-suggestions button:hover { background: white; border-color: #92ac71; color: #2b3e28; }
+  .widget-custom-container { scroll-margin-top: 24px; }
   .dashboard-footnote { margin: 12px 0 28px; color: #a0a79e; font-size: 8px; }
   .dashboard-footnote a { color: #688151; font-weight: 600; }
   .trust-profile-card { display: grid; grid-template-columns: .8fr 1.2fr; align-items: center; gap: 26px; margin: 22px 0; padding: 23px; border-radius: 11px; }

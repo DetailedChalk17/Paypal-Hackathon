@@ -6,11 +6,11 @@ import { useAuth } from "../auth";
 
 type CustomWidget = "trust" | "flags" | "funding" | "spend";
 
-const widgetPrompts: { match: RegExp; type: CustomWidget }[] = [
-  { match: /trust|score|organization/i, type: "trust" },
-  { match: /flag|review|evidence/i, type: "flags" },
-  { match: /gap|funding|goal/i, type: "funding" },
-  { match: /spend|category|cause|month/i, type: "spend" },
+const widgetPrompts: { match: RegExp; type: CustomWidget; label: string }[] = [
+  { match: /spend|category|cause|cost|expense|allocation|month/i, type: "spend", label: "Spend by cause" },
+  { match: /trust|score|organization|ngo|reputation/i, type: "trust", label: "Organization trust" },
+  { match: /gap|funding|goal|target|need|progress/i, type: "funding", label: "Funding gaps" },
+  { match: /flag|review|evidence|alert|risk|audit/i, type: "flags", label: "Review flags" },
 ];
 
 function money(cents: number) {
@@ -89,14 +89,20 @@ export function DashboardPage() {
   }, [range, summary]);
   const filteredSpend = summary?.spendByCause ?? [];
 
-  function addWidget() {
-    const widget = widgetPrompts.find((item) => item.match.test(widgetPrompt));
-    if (!widget) {
-      setAgentMessage("Try “show spend by category”, “trust scores”, “funding gaps”, or “review flags”.");
-      return;
-    }
+  function buildCustomWidget(inputPrompt?: string) {
+    const raw = (inputPrompt ?? widgetPrompt).trim();
+    const prompt = raw || "Show spend by category this month";
+    const widget = widgetPrompts.find((item) => item.match.test(prompt)) ?? widgetPrompts[0];
     setCustomWidget(widget.type);
-    setAgentMessage(`Added a ${widget.type} widget from your request.`);
+    setAgentMessage(`✓ Built and added the "${widget.label}" widget to your dashboard.`);
+    setTimeout(() => {
+      document.getElementById("custom-widget-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+  }
+
+  function applySuggestion(suggestionText: string) {
+    setWidgetPrompt(suggestionText);
+    buildCustomWidget(suggestionText);
   }
 
   if (!user) return <div className="empty-state access-state"><span className="empty-icon">♧</span><h3>Sign in to see the dashboard.</h3><p>Demo activity and review summaries are available to signed-in roles.</p><button className="button button--dark" onClick={() => openSignIn()}>Sign in to continue</button></div>;
@@ -141,13 +147,45 @@ export function DashboardPage() {
           <div className="flag-list">{summary.flags.map((item) => <div className="flag-row" key={item.id}><span className={`flag-severity flag-severity--${item.severity}`} /><div><strong>{item.title}</strong><small>{item.detail}</small></div><span className={`flag-tag flag-tag--${item.severity}`}>{item.severity}</span></div>)}</div>
           <Link className="widget-link" to="/reviewer">Open reviewer queue →</Link>
         </DashboardWidget>
-        {customWidget && <DashboardWidget title={`Custom · ${customWidget}`} subtitle="Generated from your request" className="widget-custom"><CustomWidgetView type={customWidget} summary={summary} /></DashboardWidget>}
+        {customWidget && (
+          <div id="custom-widget-anchor" className="widget-custom-container">
+            <DashboardWidget
+              title={`Custom · ${widgetPrompts.find((p) => p.type === customWidget)?.label ?? customWidget}`}
+              subtitle="Generated from your request"
+              className="widget-custom"
+            >
+              <CustomWidgetView type={customWidget} summary={summary} />
+            </DashboardWidget>
+          </div>
+        )}
       </section>
 
       <section className="studio-agent-panel">
         <span className="studio-agent-icon">✦</span>
         <div className="studio-agent-copy"><div className="eyebrow"><span className="eyebrow-line" /> DASHBOARD STUDIO</div><h2>Make this dashboard yours.</h2><p>Describe a widget and add it to your view.</p></div>
-        <div className="studio-agent-form"><label htmlFor="widget-request">Ask for a widget</label><div><input id="widget-request" value={widgetPrompt} onChange={(event) => setWidgetPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addWidget(); }} placeholder="“Show spend by category this month”" /><button className="button button--dark" onClick={addWidget}>Build widget <span>→</span></button></div>{agentMessage && <small role="status">{agentMessage}</small>}</div>
+        <div className="studio-agent-form">
+          <label htmlFor="widget-request">Ask for a widget</label>
+          <div>
+            <input
+              id="widget-request"
+              value={widgetPrompt}
+              onChange={(event) => setWidgetPrompt(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") buildCustomWidget(); }}
+              placeholder="“Show spend by category this month”"
+            />
+            <button type="button" className="button button--dark" onClick={() => buildCustomWidget()}>
+              Build widget <span>→</span>
+            </button>
+          </div>
+          <div className="prompt-suggestions">
+            <span>Try:</span>
+            <button type="button" onClick={() => applySuggestion("Spend by cause")}>✦ Spend by cause</button>
+            <button type="button" onClick={() => applySuggestion("Organization trust scores")}>✦ Trust scores</button>
+            <button type="button" onClick={() => applySuggestion("Campaign funding gaps")}>✦ Funding gaps</button>
+            <button type="button" onClick={() => applySuggestion("Evidence review flags")}>✦ Review flags</button>
+          </div>
+          {agentMessage && <small className="studio-message" role="status">{agentMessage}</small>}
+        </div>
       </section>
       <p className="dashboard-footnote">ImpactLedger demo analytics · Verify transaction records from an <Link to="/">Impact Receipt</Link>.</p>
     </div>
